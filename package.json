@@ -1,6 +1,6 @@
 {
   "name": "powermaxx-extension",
-  "displayName": "Powermaxx extension",
+  "displayName": "Powermaxx",
   "version": "0.0.1",
   "description": "Powermaxx Scraping & Automation Engine",
   "author": "Ardiansah email.ardi21@gmail.com",
@@ -24,8 +24,20 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "permissions": [
+      "storage",
+      "tabs",
+      "scripting",
+      "activeTab"
+    ],
     "host_permissions": [
-      "https://*/*"
+      "https://seller.shopee.co.id/*",
+      "https://*.shopee.co.id/*",
+      "https://seller-id.tokopedia.com/*"
+    ],
+    "optional_host_permissions": [
+      "https://*/*",
+      "http://*/*"
     ]
   }
 }

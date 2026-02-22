@@ -1,0 +1,904 @@
+import { logger } from "~src/core/logging/logger"
+import { normalizeIdType, normalizeMarketplace, toActionMode } from "~src/core/messages/guards"
+import type {
+  BridgeAction,
+  BridgeApiPaths,
+  NormalizedOrder,
+  RuntimeRunWorkerRequest,
+  RuntimeSingleRequest
+} from "~src/core/messages/contracts"
+import type { PowermaxxSettings } from "~src/core/settings/schema"
+import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
+import { executeFetchSendByOrder } from "~src/features/fetch-send/background/run-fetch-send"
+
+const WORKER_LOG_PREFIX = "[PMX-WORKER]"
+const DEFAULT_WORKER_HEARTBEAT_MS = 5000
+const DEFAULT_WORKER_ORDER_TIMEOUT_MS = 180000
+const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 30000
+const WORKER_REPORTED_STORAGE_KEY = "pmxWorkerReportedRunOrders"
+const WORKER_REPORTED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+const DEFAULT_WORKER_API_PATHS = {
+  claimNext: "/api/mp-update/runs/{runId}/claim-next",
+  heartbeat: "/api/mp-update/runs/{runId}/orders/{runOrderId}/heartbeat",
+  report: "/api/mp-update/runs/{runId}/orders/{runOrderId}/report",
+  complete: "/api/mp-update/runs/{runId}/complete"
+}
+
+const activeRunWorkerByKey = new Map<string, WorkerSession>()
+const activeRunWorkerByRunId = new Map<string, string>()
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const snippet = (value: unknown, max = 800) => {
+  const text = String(value || "")
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}...`
+}
+
+const normalizePositiveInt = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+) => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return fallback
+  const rounded = Math.trunc(num)
+  if (rounded < min) return min
+  if (rounded > max) return max
+  return rounded
+}
+
+const normalizeWorkerRunId = (value: unknown) => String(value || "").trim()
+
+const normalizeWorkerId = (value: unknown, senderTabId?: number | null) => {
+  const raw = String(value || "").trim()
+  if (raw) return raw
+  if (senderTabId) return `tab-${senderTabId}`
+  return `worker-${Date.now()}`
+}
+
+const normalizeWorkerMode = (value: unknown): "single" | "bulk" => {
+  const raw = String(value || "").trim().toLowerCase()
+  return raw === "single" ? "single" : "bulk"
+}
+
+const normalizeWorkerAction = (value: unknown): BridgeAction => {
+  const raw = String(value || "").trim().toLowerCase()
+  if (raw === "update_order") return "update_order"
+  if (raw === "update_income") return "update_income"
+  return "update_both"
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+const sanitizeErrorMessage = (
+  value: unknown,
+  fallback = "Gagal memproses order marketplace."
+) => {
+  const message = String(value || "").replace(/^Error:\s*/i, "").trim()
+  return message || fallback
+}
+
+const sanitizeTechnicalError = (value: unknown) => snippet(value, 1200)
+
+const classifyErrorCode = (message: unknown) => {
+  const raw = String(message || "").toLowerCase()
+  if (!raw) return "UNKNOWN"
+  if (raw.includes("timeout") || raw.includes("timed out")) return "TIMEOUT"
+  if (raw.includes("cannot access contents of the page")) return "EXTENSION_PERMISSION"
+  if (raw.includes("failed to fetch")) return "NETWORK_OR_CORS"
+  if (raw.includes("unauthorized") || raw.includes("forbidden")) return "AUTH"
+  if (raw.includes("order tidak ditemukan")) return "ORDER_NOT_FOUND"
+  if (raw.includes("base url")) return "INVALID_BASE_URL"
+  return "UNKNOWN"
+}
+
+const buildActionHint = (errorCode: string) => {
+  if (errorCode === "TIMEOUT") {
+    return "Pastikan tab marketplace terbuka dan akun login, lalu jalankan ulang."
+  }
+  if (errorCode === "EXTENSION_PERMISSION") {
+    return "Berikan host permission extension untuk domain marketplace."
+  }
+  if (errorCode === "NETWORK_OR_CORS" || errorCode === "INVALID_BASE_URL") {
+    return "Periksa Base URL API, koneksi jaringan, dan kebijakan CORS server."
+  }
+  if (errorCode === "AUTH") {
+    return "Login ulang dari popup lalu jalankan ulang run."
+  }
+  if (errorCode === "ORDER_NOT_FOUND") {
+    return "Periksa mapping order identifier dari run queue backend."
+  }
+  return "Coba ulang proses order dan cek log worker."
+}
+
+const getLocalStorage = () => chrome.storage?.local
+
+const loadWorkerReportedRegistry = async (): Promise<Record<string, number>> => {
+  const storage = getLocalStorage()
+  if (!storage) return {}
+
+  return new Promise((resolve) => {
+    storage.get([WORKER_REPORTED_STORAGE_KEY], (result) => {
+      const registry = result?.[WORKER_REPORTED_STORAGE_KEY]
+      resolve(isObject(registry) ? (registry as Record<string, number>) : {})
+    })
+  })
+}
+
+const saveWorkerReportedRegistry = async (registry: Record<string, number>) => {
+  const storage = getLocalStorage()
+  if (!storage) return
+
+  return new Promise<void>((resolve) => {
+    storage.set({ [WORKER_REPORTED_STORAGE_KEY]: registry }, () => resolve())
+  })
+}
+
+const pruneWorkerReportedRegistry = (registry: Record<string, number>) => {
+  const now = Date.now()
+  const next: Record<string, number> = {}
+
+  Object.entries(registry || {}).forEach(([key, value]) => {
+    const ts = Number(value)
+    if (!Number.isFinite(ts)) return
+    if (now - ts > WORKER_REPORTED_RETENTION_MS) return
+    next[key] = ts
+  })
+
+  return next
+}
+
+const loadPersistedReportedOrders = async (runId: string) => {
+  const prefix = `${runId}:`
+  const registry = pruneWorkerReportedRegistry(await loadWorkerReportedRegistry())
+  await saveWorkerReportedRegistry(registry)
+  return new Set(
+    Object.keys(registry).filter((key) => String(key).startsWith(prefix))
+  )
+}
+
+const markPersistedReportedOrder = async (dedupeKey: string) => {
+  if (!dedupeKey) return
+  const current = pruneWorkerReportedRegistry(await loadWorkerReportedRegistry())
+  current[dedupeKey] = Date.now()
+  await saveWorkerReportedRegistry(current)
+}
+
+const fillPathTemplate = (
+  template: string,
+  params: Record<string, string | number>
+) => template.replace(/\{([^}]+)\}/g, (_match, key) => String(params[key] ?? ""))
+
+const buildWorkerUrl = (
+  baseUrl: string,
+  template: string,
+  params: Record<string, string | number>
+) => {
+  const path = fillPathTemplate(template, params)
+  const cleanBase = baseUrl.replace(/\/+$/, "")
+  return `${cleanBase}${path.startsWith("/") ? "" : "/"}${path}`
+}
+
+const buildWorkerApiPaths = (overrides: BridgeApiPaths = {}) => ({
+  claimNext: overrides.claimNext || DEFAULT_WORKER_API_PATHS.claimNext,
+  heartbeat: overrides.heartbeat || DEFAULT_WORKER_API_PATHS.heartbeat,
+  report: overrides.report || DEFAULT_WORKER_API_PATHS.report,
+  complete: overrides.complete || DEFAULT_WORKER_API_PATHS.complete
+})
+
+interface FetchJsonResult {
+  ok: boolean
+  status: number
+  statusText: string
+  text: string
+  json: Record<string, any> | null
+  error?: string
+}
+
+const fetchJsonWithTimeout = async (
+  url: string,
+  options: RequestInit,
+  timeoutMs = DEFAULT_WORKER_REQUEST_TIMEOUT_MS
+): Promise<FetchJsonResult> => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...(options.headers || {})
+      }
+    })
+
+    const text = await response.text()
+    let json: Record<string, any> | null = null
+
+    if (text) {
+      try {
+        json = JSON.parse(text)
+      } catch (_error) {
+        json = null
+      }
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      text,
+      json
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      statusText: "FETCH_ERROR",
+      text: "",
+      json: null,
+      error: String((error as Error)?.message || error)
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+interface WorkerSession {
+  key: string
+  runId: string
+  workerId: string
+  token: string
+  baseUrl: string
+  mode: "single" | "bulk"
+  action: BridgeAction
+  apiPaths: ReturnType<typeof buildWorkerApiPaths>
+  completeOnFinish: boolean
+  heartbeatIntervalMs: number
+  orderTimeoutMs: number
+  requestTimeoutMs: number
+  sourceTabId: number | null
+  extensionVersion: string
+  reportedOrders: Set<string>
+  stats: {
+    claimed: number
+    processed: number
+    success: number
+    failed: number
+    timed_out: number
+    report_failed: number
+  }
+}
+
+const workerLog = (
+  session: WorkerSession,
+  level: "log" | "warn" | "error",
+  event: string,
+  payload: Record<string, unknown> = {}
+) => {
+  const line = {
+    run_id: session.runId,
+    worker_id: session.workerId,
+    event,
+    ...payload
+  }
+
+  if (level === "warn") {
+    console.warn(WORKER_LOG_PREFIX, line)
+    return
+  }
+
+  if (level === "error") {
+    console.error(WORKER_LOG_PREFIX, line)
+    return
+  }
+
+  console.log(WORKER_LOG_PREFIX, line)
+}
+
+const normalizeClaimedOrder = (
+  rawPayload: Record<string, unknown> | null,
+  fallbackAction: BridgeAction
+) => {
+  if (!rawPayload) {
+    return {
+      hasOrder: false,
+      runOrderId: "",
+      order: null as NormalizedOrder | null,
+      action: fallbackAction
+    }
+  }
+
+  const root =
+    (isObject(rawPayload.data) ? rawPayload.data : rawPayload) || rawPayload
+
+  const hasOrder =
+    root.has_order === true ||
+    root.hasOrder === true ||
+    root.empty === false ||
+    Boolean(root.run_order || root.runOrder || root.order || root.item)
+
+  if (!hasOrder) {
+    return {
+      hasOrder: false,
+      runOrderId: "",
+      order: null,
+      action: fallbackAction
+    }
+  }
+
+  const runOrder =
+    (isObject(root.run_order) && root.run_order) ||
+    (isObject(root.runOrder) && root.runOrder) ||
+    (isObject(root.order) && root.order) ||
+    (isObject(root.item) && root.item) ||
+    root
+
+  const runOrderId = String(
+    runOrder.run_order_id || runOrder.runOrderId || runOrder.id || ""
+  )
+
+  const identifier = String(
+    runOrder.marketplace_identifier ||
+      runOrder.identifier ||
+      runOrder.order_id ||
+      runOrder.order_sn ||
+      runOrder.mp_order_id ||
+      runOrder.mp_order_sn ||
+      ""
+  ).trim()
+
+  const marketplace = normalizeMarketplace(
+    runOrder.marketplace || runOrder.marketplace_slug || runOrder.marketplace_name
+  )
+
+  const idType =
+    normalizeIdType(runOrder.id_type || runOrder.identifier_type || runOrder.idType) ||
+    (runOrder.mp_order_id !== undefined || runOrder.order_id !== undefined
+      ? "order_id"
+      : "order_sn")
+
+  const action = normalizeWorkerAction(runOrder.action || fallbackAction)
+
+  if (!identifier || (marketplace !== "shopee" && marketplace !== "tiktok_shop")) {
+    return {
+      hasOrder: false,
+      runOrderId,
+      order: null,
+      action
+    }
+  }
+
+  return {
+    hasOrder: true,
+    runOrderId,
+    action,
+    order: {
+      id: identifier,
+      marketplace,
+      idType
+    } as NormalizedOrder
+  }
+}
+
+const claimNextRunOrder = async (session: WorkerSession) => {
+  const url = buildWorkerUrl(session.baseUrl, session.apiPaths.claimNext, {
+    runId: session.runId
+  })
+
+  const response = await fetchJsonWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`
+      }
+    },
+    session.requestTimeoutMs
+  )
+
+  if (!response.ok) {
+    const suffix = response.error ? ` (${response.error})` : ""
+    return {
+      ok: false,
+      error: `Claim next gagal ${response.status}${suffix}`,
+      claimed: null
+    }
+  }
+
+  return {
+    ok: true,
+    error: "",
+    claimed: normalizeClaimedOrder(response.json, session.action)
+  }
+}
+
+const sendHeartbeat = async (
+  session: WorkerSession,
+  runOrderId: string,
+  payload: Record<string, unknown>
+) => {
+  const url = buildWorkerUrl(session.baseUrl, session.apiPaths.heartbeat, {
+    runId: session.runId,
+    runOrderId
+  })
+
+  return fetchJsonWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`
+      },
+      body: JSON.stringify(payload)
+    },
+    session.requestTimeoutMs
+  )
+}
+
+const reportRunOrder = async (
+  session: WorkerSession,
+  runOrderId: string,
+  payload: Record<string, unknown>
+) => {
+  const dedupeKey = `${session.runId}:${runOrderId}`
+  if (session.reportedOrders.has(dedupeKey)) {
+    return {
+      ok: true,
+      duplicate: true,
+      response: null as FetchJsonResult | null
+    }
+  }
+
+  const url = buildWorkerUrl(session.baseUrl, session.apiPaths.report, {
+    runId: session.runId,
+    runOrderId
+  })
+
+  let lastResponse: FetchJsonResult | null = null
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetchJsonWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${session.token}`
+        },
+        body: JSON.stringify(payload)
+      },
+      session.requestTimeoutMs
+    )
+
+    lastResponse = response
+    if (response.ok) {
+      session.reportedOrders.add(dedupeKey)
+      await markPersistedReportedOrder(dedupeKey)
+      return {
+        ok: true,
+        duplicate: false,
+        response
+      }
+    }
+
+    const shouldRetry = [0, 408, 429].includes(response.status)
+    if (!shouldRetry || attempt >= 3) {
+      break
+    }
+
+    await sleep(400 * attempt)
+  }
+
+  return {
+    ok: false,
+    duplicate: false,
+    response: lastResponse
+  }
+}
+
+const completeRunIfNeeded = async (session: WorkerSession) => {
+  if (!session.completeOnFinish) {
+    return {
+      ok: true,
+      status: 0
+    }
+  }
+
+  const url = buildWorkerUrl(session.baseUrl, session.apiPaths.complete, {
+    runId: session.runId
+  })
+
+  return fetchJsonWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${session.token}`
+      },
+      body: JSON.stringify({
+        stats: session.stats
+      })
+    },
+    session.requestTimeoutMs
+  )
+}
+
+const processClaimedRunOrder = async (
+  session: WorkerSession,
+  claimed: ReturnType<typeof normalizeClaimedOrder>,
+  settings: PowermaxxSettings
+) => {
+  const startedAt = Date.now()
+  const runOrderId = claimed.runOrderId || `${Date.now()}`
+
+  const order = claimed.order
+  if (!order) {
+    return {
+      ok: false,
+      status: "failed",
+      errorCode: "INVALID_ORDER",
+      errorMessage: "Payload order worker tidak valid.",
+      durationMs: 0
+    }
+  }
+
+  await sendBridgeWorkerEvent(session.sourceTabId, "run_order_started", {
+    run_order_id: runOrderId,
+    identifier: order.id,
+    marketplace: order.marketplace,
+    action: claimed.action
+  })
+
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  try {
+    heartbeatTimer = setInterval(() => {
+      void sendHeartbeat(session, runOrderId, {
+        status: "processing",
+        worker_id: session.workerId,
+        run_id: session.runId,
+        timestamp: Date.now()
+      }).then((heartbeatResponse) => {
+        void sendBridgeWorkerEvent(session.sourceTabId, "run_order_heartbeat", {
+          run_order_id: runOrderId,
+          worker_id: session.workerId,
+          run_id: session.runId,
+          ok: heartbeatResponse.ok,
+          status: heartbeatResponse.status
+        })
+      })
+    }, session.heartbeatIntervalMs)
+
+    const result = await executeFetchSendByOrder({
+      order,
+      actionMode: toActionMode(claimed.action),
+      settings,
+      timeoutMs: session.orderTimeoutMs
+    })
+
+    const durationMs = Date.now() - startedAt
+    const errorCode = result.ok
+      ? null
+      : classifyErrorCode(sanitizeErrorMessage(result.error))
+    const status = result.ok
+      ? "success"
+      : errorCode === "TIMEOUT"
+        ? "timed_out"
+        : "failed"
+    const errorMessage = result.ok
+      ? null
+      : sanitizeErrorMessage(result.error)
+
+    const reportPayload = {
+      status,
+      error_code: errorCode,
+      error_message: errorMessage,
+      technical_error: result.ok ? null : sanitizeTechnicalError(result.error),
+      changes: [],
+      action_hint: result.ok ? null : buildActionHint(String(errorCode || "")),
+      meta: {
+        worker_id: session.workerId,
+        extension_version: session.extensionVersion,
+        duration_ms: durationMs
+      }
+    }
+
+    const reportResponse = await reportRunOrder(session, runOrderId, reportPayload)
+
+    if (!reportResponse.ok) {
+      session.stats.report_failed += 1
+    }
+
+    await sendBridgeWorkerEvent(session.sourceTabId, "run_order_finished", {
+      run_order_id: runOrderId,
+      status,
+      error_code: errorCode,
+      error_message: errorMessage,
+      report_ok: reportResponse.ok
+    })
+
+    return {
+      ok: result.ok,
+      status,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+      durationMs
+    }
+  } catch (error) {
+    const durationMs = Date.now() - startedAt
+    const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+    const errorCode = classifyErrorCode(errorMessage)
+    const status = errorCode === "TIMEOUT" ? "timed_out" : "failed"
+
+    const reportResponse = await reportRunOrder(session, runOrderId, {
+      status,
+      error_code: errorCode,
+      error_message: errorMessage,
+      technical_error: sanitizeTechnicalError(
+        (error as Error)?.stack || (error as Error)?.message || error
+      ),
+      changes: [],
+      action_hint: buildActionHint(errorCode),
+      meta: {
+        worker_id: session.workerId,
+        extension_version: session.extensionVersion,
+        duration_ms: durationMs
+      }
+    })
+
+    if (!reportResponse.ok) {
+      session.stats.report_failed += 1
+    }
+
+    await sendBridgeWorkerEvent(session.sourceTabId, "run_order_finished", {
+      run_order_id: runOrderId,
+      status,
+      error_code: errorCode,
+      error_message: errorMessage,
+      report_ok: reportResponse.ok
+    })
+
+    return {
+      ok: false,
+      status,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+      durationMs
+    }
+  } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+    }
+  }
+}
+
+const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings) => {
+  await sendBridgeWorkerEvent(session.sourceTabId, "run_started", {
+    run_id: session.runId,
+    worker_id: session.workerId,
+    mode: session.mode
+  })
+
+  workerLog(session, "log", "run_started", {
+    action: session.action,
+    mode: session.mode
+  })
+
+  while (true) {
+    const claimResult = await claimNextRunOrder(session)
+
+    if (!claimResult.ok) {
+      throw new Error(claimResult.error || "Gagal claim order worker.")
+    }
+
+    const claimed = claimResult.claimed
+    if (!claimed?.hasOrder) {
+      break
+    }
+
+    session.stats.claimed += 1
+
+    const outcome = await processClaimedRunOrder(session, claimed, settings)
+    session.stats.processed += 1
+
+    if (outcome.ok) {
+      session.stats.success += 1
+    } else if (outcome.status === "timed_out") {
+      session.stats.timed_out += 1
+    } else {
+      session.stats.failed += 1
+    }
+  }
+
+  const completion = await completeRunIfNeeded(session)
+  if (!completion.ok) {
+    workerLog(session, "warn", "run_complete_failed", {
+      status: completion.status
+    })
+  }
+
+  await sendBridgeWorkerEvent(session.sourceTabId, "run_finished", {
+    run_id: session.runId,
+    worker_id: session.workerId,
+    ok: true,
+    stats: session.stats
+  })
+
+  workerLog(session, "log", "run_finished", {
+    stats: session.stats
+  })
+}
+
+export const startRunWorker = async (args: {
+  message: RuntimeRunWorkerRequest | RuntimeSingleRequest
+  senderTabId?: number | null
+  settings: PowermaxxSettings
+}) => {
+  const { message, senderTabId, settings } = args
+
+  const token = settings.auth.token || ""
+  const baseUrl = settings.auth.baseUrl || ""
+  const runId = normalizeWorkerRunId(message.runId || message.run_id)
+  const workerId = normalizeWorkerId(message.workerId || message.worker_id, senderTabId)
+
+  if (!runId) {
+    return {
+      ok: false,
+      error: "run_id wajib diisi untuk worker mode.",
+      running: false,
+      runId: "",
+      workerId,
+      mode: "bulk" as const
+    }
+  }
+
+  if (!token) {
+    return {
+      ok: false,
+      error: "Sesi login belum tersedia. Login dulu di popup.",
+      running: false,
+      runId,
+      workerId,
+      mode: "bulk" as const
+    }
+  }
+
+  if (!baseUrl) {
+    return {
+      ok: false,
+      error: "Base URL belum diatur.",
+      running: false,
+      runId,
+      workerId,
+      mode: "bulk" as const
+    }
+  }
+
+  const workerKey = `${runId}:${workerId}`
+
+  if (activeRunWorkerByKey.has(workerKey) || activeRunWorkerByRunId.has(runId)) {
+    return {
+      ok: false,
+      error: "Worker untuk run ini masih berjalan.",
+      running: true,
+      runId,
+      workerId,
+      mode: normalizeWorkerMode(message.mode)
+    }
+  }
+
+  const apiOverrides = {
+    ...(isObject(message.apiPaths) ? message.apiPaths : {}),
+    ...(isObject(message.api_paths) ? message.api_paths : {})
+  }
+
+  const completeOnFinish =
+    Boolean(
+      (message as RuntimeRunWorkerRequest & { completeOnFinish?: boolean })
+        .completeOnFinish
+    ) || Boolean(message.complete_on_finish)
+
+  const heartbeatIntervalMs = normalizePositiveInt(
+    (message as RuntimeRunWorkerRequest & { heartbeatMs?: number }).heartbeatMs ??
+      message.heartbeat_interval_ms,
+    DEFAULT_WORKER_HEARTBEAT_MS,
+    5000,
+    30000
+  )
+
+  const orderTimeoutMs = normalizePositiveInt(
+    (message as RuntimeRunWorkerRequest & { orderTimeoutMs?: number }).orderTimeoutMs ??
+      message.order_timeout_ms,
+    DEFAULT_WORKER_ORDER_TIMEOUT_MS,
+    60000,
+    600000
+  )
+
+  const requestTimeoutMs = normalizePositiveInt(
+    (message as RuntimeRunWorkerRequest & { requestTimeoutMs?: number })
+      .requestTimeoutMs ?? message.request_timeout_ms,
+    DEFAULT_WORKER_REQUEST_TIMEOUT_MS,
+    5000,
+    120000
+  )
+
+  const mode = normalizeWorkerMode(message.mode)
+  const action = normalizeWorkerAction(message.action)
+
+  const session: WorkerSession = {
+    key: workerKey,
+    runId,
+    workerId,
+    token,
+    baseUrl,
+    mode,
+    action,
+    apiPaths: buildWorkerApiPaths(apiOverrides),
+    completeOnFinish,
+    heartbeatIntervalMs,
+    orderTimeoutMs,
+    requestTimeoutMs,
+    sourceTabId: senderTabId || null,
+    extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
+    reportedOrders: await loadPersistedReportedOrders(runId),
+    stats: {
+      claimed: 0,
+      processed: 0,
+      success: 0,
+      failed: 0,
+      timed_out: 0,
+      report_failed: 0
+    }
+  }
+
+  activeRunWorkerByKey.set(workerKey, session)
+  activeRunWorkerByRunId.set(runId, workerKey)
+
+  runWorkerLoop(session, settings)
+    .catch(async (error) => {
+      const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+      const errorCode = classifyErrorCode(errorMessage)
+
+      logger.error("Worker run failed", {
+        feature: "worker",
+        domain: "run-loop",
+        step: "catch",
+        runId: session.runId,
+        workerId: session.workerId,
+        error: errorMessage
+      })
+
+      workerLog(session, "error", "run_failed", {
+        error_code: errorCode,
+        error_message: errorMessage
+      })
+
+      await sendBridgeWorkerEvent(session.sourceTabId, "run_failed", {
+        run_id: session.runId,
+        worker_id: session.workerId,
+        error_code: errorCode,
+        error_message: errorMessage,
+        technical_error: sanitizeTechnicalError(
+          (error as Error)?.stack || (error as Error)?.message || error
+        ),
+        action_hint: buildActionHint(errorCode),
+        stats: session.stats
+      })
+    })
+    .finally(() => {
+      activeRunWorkerByKey.delete(workerKey)
+      activeRunWorkerByRunId.delete(runId)
+    })
+
+  return {
+    ok: true,
+    error: "",
+    running: true,
+    runId,
+    workerId,
+    mode
+  }
+}

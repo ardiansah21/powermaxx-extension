@@ -1,33 +1,72 @@
-This is a [Plasmo extension](https://docs.plasmo.com/) project bootstrapped with [`plasmo init`](https://www.npmjs.com/package/plasmo).
+# Powermaxx
 
-## Getting Started
+Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), lalu mengirim data ke API Powermaxx.
 
-First, run the development server:
+## Referensi Resmi
+
+- Chrome Extensions MV3 Service Worker: https://developer.chrome.com/docs/extensions/develop/migrate/to-service-workers
+- Chrome Extensions Content Scripts: https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts
+- Chrome Extensions Message Passing: https://developer.chrome.com/docs/extensions/develop/concepts/messaging
+- Chrome Extensions `chrome.scripting`: https://developer.chrome.com/docs/extensions/reference/api/scripting
+- Chrome Extensions Permissions: https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions
+- Plasmo Entry Files: https://docs.plasmo.com/framework/entry-files
+- Plasmo Background Service Worker: https://docs.plasmo.com/framework/background-service-worker
+- Plasmo Content Scripts: https://docs.plasmo.com/framework/content-scripts
+- Plasmo Manifest Customization: https://docs.plasmo.com/framework/customization/manifest
+
+## Requirements
+
+- Node.js 18+ (disarankan)
+- npm
+- Google Chrome
+
+## Setup
 
 ```bash
-pnpm dev
-# or
+npm install
+```
+
+## Menjalankan Lokal
+
+```bash
 npm run dev
 ```
 
-Open your browser and load the appropriate development build. For example, if you are developing for the chrome browser, using manifest v3, use: `build/chrome-mv3-dev`.
+Load unpacked extension dari folder:
+- `build/chrome-mv3-dev`
 
-You can start editing the popup by modifying `popup.tsx`. It should auto-update as you make changes. To add an options page, simply add a `options.tsx` file to the root of the project, with a react component default exported. Likewise to add a content page, add a `content.ts` file to the root of the project, importing some module and do some logic, then reload the extension on your browser.
-
-For further guidance, [visit our Documentation](https://docs.plasmo.com/)
-
-## Making production build
-
-Run the following:
+## Build Production
 
 ```bash
-pnpm build
-# or
 npm run build
+npm run package
 ```
 
-This should create a production bundle for your extension, ready to be zipped and published to the stores.
+## Arsitektur Ringkas
 
-## Submit to the webstores
+- `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
+- `src/contents/marketplace.ts`: runner scraping/fetch marketplace + bridge listener.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat `Fetch + Send`.
+- `src/options.tsx`: pengaturan Base URL API + endpoint marketplace.
+- `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
 
-The easiest way to deploy your Plasmo extension is to use the built-in [bpp](https://bpp.browser.market) GitHub action. Prior to using this action however, make sure to build your extension and upload the first version to the store to establish the basic credentials. Then, simply follow [this setup instruction](https://docs.plasmo.com/framework/workflows/submit) and you should be on your way for automated submission!
+## Permission Model
+
+- `host_permissions` statis: domain marketplace yang dipakai scraping.
+- `optional_host_permissions`: domain Powermaxx API diminta saat runtime.
+
+## Testing / Verifikasi Cepat
+
+1. Jalankan `npm run build`.
+2. Jalankan `npm run dev`.
+3. Buka popup dan login dengan email + password akun Powermaxx.
+4. Buka tab seller Shopee/TikTok (sudah login seller).
+5. Di popup klik `Fetch + Send`.
+6. Verifikasi response status dan event bridge untuk mode web integration.
+
+## Troubleshooting
+
+- Jika muncul `Sesi login belum tersedia`: login dulu dari Popup (email + password).
+- Jika `Tab marketplace tidak ditemukan`: fokus ke tab seller aktif.
+- Jika `Bridge belum aktif`: grant optional host permission dan register bridge origin.
+- Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
