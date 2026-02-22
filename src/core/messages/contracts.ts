@@ -128,6 +128,14 @@ export interface RuntimePopupFetchSendRequest {
   actionMode: ActionMode
 }
 
+export interface RuntimePopupFetchSendAwbRequest {
+  type: "POWERMAXX_POPUP_FETCH_SEND_AWB"
+}
+
+export interface RuntimePopupDownloadAwbRequest {
+  type: "POWERMAXX_POPUP_DOWNLOAD_AWB"
+}
+
 export interface RuntimePopupLoginRequest {
   type: "POWERMAXX_POPUP_LOGIN"
   baseUrl: string
@@ -146,6 +154,8 @@ export type RuntimeRequestMessage =
   | RuntimeBulkRequest
   | RuntimeRunWorkerRequest
   | RuntimePopupFetchSendRequest
+  | RuntimePopupFetchSendAwbRequest
+  | RuntimePopupDownloadAwbRequest
   | RuntimePopupLoginRequest
   | RuntimePopupLogoutRequest
 
@@ -161,6 +171,18 @@ export interface RuntimeBridgeRegisterResponse {
   matches: string[]
 }
 
+export interface RuntimeAwbResult {
+  ok: boolean
+  error?: string
+  downloaded?: boolean
+  fileName?: string
+  openUrl?: string
+  printUrl?: string
+  step?: string
+  detail?: string
+  marketplace?: Exclude<Marketplace, "auto">
+}
+
 export interface RuntimeActionResponse {
   ok: boolean
   error?: string
@@ -171,6 +193,9 @@ export interface RuntimeActionResponse {
   workerId?: string
   orderId?: string
   openUrl?: string
+  fetchOk?: boolean
+  awbOk?: boolean
+  awb?: RuntimeAwbResult
 }
 
 export interface ContentFetchRequest {
@@ -195,4 +220,38 @@ export interface ContentFetchResponse {
   incomeRawJson: Record<string, unknown> | null
   incomeDetailRawJson: Record<string, unknown> | null
   fetchMeta?: Record<string, unknown>
+}
+
+export interface ContentAwbRequest {
+  type: "POWERMAXX_CONTENT_AWB"
+  request: {
+    marketplace: Exclude<Marketplace, "auto">
+    endpoints: {
+      orderEndpoint: string
+      packageEndpoint?: string
+      createJobEndpoint?: string
+      downloadJobEndpoint?: string
+      generateEndpoint?: string
+    }
+    options: {
+      regionId?: string
+      asyncSdVersion?: string
+      fileType?: string
+      fileName?: string
+      fileContents?: string
+      filePrefix?: string
+    }
+  }
+}
+
+export interface ContentAwbResponse {
+  ok: boolean
+  error?: string
+  downloaded?: boolean
+  fileName?: string
+  openUrl?: string
+  printUrl?: string
+  step?: string
+  detail?: string
+  jobId?: string
 }

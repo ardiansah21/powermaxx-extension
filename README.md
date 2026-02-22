@@ -45,9 +45,10 @@ npm run package
 ## Arsitektur Ringkas
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
-- `src/contents/marketplace.ts`: runner scraping/fetch marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat `Fetch + Send`.
-- `src/options.tsx`: pengaturan Base URL API + endpoint marketplace.
+- `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat `Fetch + Send` + `AWB`.
+- `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB.
+- `src/features/awb/*`: flow AWB Shopee/TikTok (content runner + background executor).
 - `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
 
 ## Permission Model
@@ -62,7 +63,8 @@ npm run package
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Di popup klik `Fetch + Send`.
-6. Verifikasi response status dan event bridge untuk mode web integration.
+6. Uji `Fetch + Send + AWB` dan `Download AWB`.
+7. Verifikasi response status dan event bridge untuk mode web integration.
 
 ## Regression Guard
 
@@ -82,3 +84,4 @@ npm run package
 - Jika `Tab marketplace tidak ditemukan`: fokus ke tab seller aktif.
 - Jika `Bridge belum aktif`: grant optional host permission dan register bridge origin.
 - Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
+- Jika AWB gagal: cek endpoint AWB di Options, pastikan tab yang aktif adalah halaman detail order marketplace.

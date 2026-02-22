@@ -10,6 +10,9 @@
 - Error logging mengikuti format terstruktur: `feature`, `domain`, `step`, `context`.
 - Popup login disederhanakan: saat belum login hanya menampilkan form `Email + Password`; section `Fetch + Send` disembunyikan sampai sesi aktif.
 - Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
+- Popup sesi aktif sekarang mendukung aksi `Fetch + Send + AWB` dan `Download AWB` selain aksi fetch/send dasar.
+- Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
+- Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
 - Worker `run_order report` memakai dedupe key per `run_id:run_order_id` dan disimpan sementara di `chrome.storage.local` untuk mencegah report duplikat saat retry/restart.
 - Worker dan bulk menggunakan klasifikasi error dasar (`TIMEOUT`, `PROCESSING_FAILED`, dll) agar event/status lebih konsisten untuk debugging.
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.

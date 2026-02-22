@@ -13,8 +13,11 @@ const getStorageArea = () => chrome.storage?.local
 const mergeSettings = (raw: unknown): PowermaxxSettings => {
   const record = (raw || {}) as Record<string, any>
   const marketplaces = record.marketplaces || {}
+  const shopee = marketplaces.shopee || {}
+  const shopeeAwb = shopee.awb || {}
   const legacyTikTok = marketplaces.tiktok || {}
   const tiktokShop = marketplaces.tiktok_shop || legacyTikTok
+  const tiktokAwb = tiktokShop.awb || {}
 
   const merged: PowermaxxSettings = {
     ...DEFAULT_SETTINGS,
@@ -38,20 +41,53 @@ const mergeSettings = (raw: unknown): PowermaxxSettings => {
     marketplaces: {
       shopee: {
         ...DEFAULT_SETTINGS.marketplaces.shopee,
-        ...(marketplaces.shopee || {}),
+        ...shopee,
         baseUrl:
-          normalizeBaseUrl(marketplaces?.shopee?.baseUrl) ||
+          normalizeBaseUrl(shopee?.baseUrl) ||
           normalizeBaseUrl(record?.auth?.baseUrl) ||
           DEFAULT_SETTINGS.marketplaces.shopee.baseUrl,
         searchEndpoint:
-          String(marketplaces?.shopee?.searchEndpoint || "").trim() ||
+          String(shopee?.searchEndpoint || "").trim() ||
           DEFAULT_SETTINGS.marketplaces.shopee.searchEndpoint,
         incomeEndpoint:
-          String(marketplaces?.shopee?.incomeEndpoint || "").trim() ||
+          String(shopee?.incomeEndpoint || "").trim() ||
           DEFAULT_SETTINGS.marketplaces.shopee.incomeEndpoint,
         orderEndpoint:
-          String(marketplaces?.shopee?.orderEndpoint || "").trim() ||
-          DEFAULT_SETTINGS.marketplaces.shopee.orderEndpoint
+          String(shopee?.orderEndpoint || "").trim() ||
+          DEFAULT_SETTINGS.marketplaces.shopee.orderEndpoint,
+        awb: {
+          ...DEFAULT_SETTINGS.marketplaces.shopee.awb,
+          ...shopeeAwb,
+          packageEndpoint:
+            String(
+              shopeeAwb?.packageEndpoint || shopeeAwb?.getPackageEndpoint || ""
+            ).trim() || DEFAULT_SETTINGS.marketplaces.shopee.awb.packageEndpoint,
+          createJobEndpoint:
+            String(
+              shopeeAwb?.createJobEndpoint || shopeeAwb?.createSdJobEndpoint || ""
+            ).trim() || DEFAULT_SETTINGS.marketplaces.shopee.awb.createJobEndpoint,
+          downloadJobEndpoint:
+            String(
+              shopeeAwb?.downloadJobEndpoint ||
+                shopeeAwb?.downloadSdJobEndpoint ||
+                ""
+            ).trim() || DEFAULT_SETTINGS.marketplaces.shopee.awb.downloadJobEndpoint,
+          regionId:
+            String(shopeeAwb?.regionId || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.shopee.awb.regionId,
+          asyncSdVersion:
+            String(shopeeAwb?.asyncSdVersion || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.shopee.awb.asyncSdVersion,
+          fileType:
+            String(shopeeAwb?.fileType || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.shopee.awb.fileType,
+          fileName:
+            String(shopeeAwb?.fileName || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.shopee.awb.fileName,
+          fileContents:
+            String(shopeeAwb?.fileContents || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.shopee.awb.fileContents
+        }
       },
       tiktok_shop: {
         ...DEFAULT_SETTINGS.marketplaces.tiktok_shop,
@@ -68,7 +104,17 @@ const mergeSettings = (raw: unknown): PowermaxxSettings => {
           DEFAULT_SETTINGS.marketplaces.tiktok_shop.statementEndpoint,
         statementDetailEndpoint:
           String(tiktokShop?.statementDetailEndpoint || "").trim() ||
-          DEFAULT_SETTINGS.marketplaces.tiktok_shop.statementDetailEndpoint
+          DEFAULT_SETTINGS.marketplaces.tiktok_shop.statementDetailEndpoint,
+        awb: {
+          ...DEFAULT_SETTINGS.marketplaces.tiktok_shop.awb,
+          ...tiktokAwb,
+          generateEndpoint:
+            String(tiktokAwb?.generateEndpoint || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.tiktok_shop.awb.generateEndpoint,
+          filePrefix:
+            String(tiktokAwb?.filePrefix || "").trim() ||
+            DEFAULT_SETTINGS.marketplaces.tiktok_shop.awb.filePrefix
+        }
       }
     }
   }

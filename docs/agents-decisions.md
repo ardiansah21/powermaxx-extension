@@ -12,3 +12,4 @@
 - [2026-02-23] Bulk headless diberi overlap guard per sumber trigger (`tab-{id}` / `global`) agar run ganda dari sumber yang sama tidak berjalan paralel.
 - [2026-02-23] Bridge coexistence guard aktif: saat extension legacy masih merespons event `powermaxx`, bridge Plasmo menahan eksekusi lokal agar mengurangi risiko proses ganda pada browser yang memasang extension lama + baru bersamaan.
 - [2026-02-23] Error taxonomy untuk mode `single`/`bulk`/`worker` diseragamkan lewat modul shared `src/core/errors/automation-error.ts` agar status, kode error, dan action hint konsisten.
+- [2026-02-22] Parity AWB dimulai di extension baru: popup mendukung `Fetch + Send + AWB` serta `Download AWB`, dan konfigurasi endpoint AWB Shopee/TikTok dipusatkan di `options.tsx` + `powermaxxSettings`.

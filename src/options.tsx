@@ -2,8 +2,8 @@ import { useEffect, useState } from "react"
 
 import { sendRuntimeMessage } from "~src/core/messaging/runtime-client"
 import { ensureHostPermission } from "~src/core/permissions/host-permissions"
-import { loadSettings, saveSettings } from "~src/core/settings/storage"
 import { type PowermaxxSettings } from "~src/core/settings/schema"
+import { loadSettings, saveSettings } from "~src/core/settings/storage"
 
 type StatusTone = "neutral" | "success" | "warning" | "error"
 
@@ -99,7 +99,8 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
   border: "1px solid #cbd5e1",
   borderRadius: 9,
-  padding: "10px 10px"
+  padding: "10px 10px",
+  background: "#ffffff"
 }
 
 const actionBarStyle: React.CSSProperties = {
@@ -227,7 +228,7 @@ function OptionsPage() {
       <header style={headerStyle}>
         <h1 style={titleStyle}>Powermaxx Options</h1>
         <p style={subtitleStyle}>
-          Atur Base URL API dan endpoint marketplace.
+          Atur endpoint marketplace, default fallback, dan konfigurasi AWB.
         </p>
       </header>
 
@@ -259,6 +260,28 @@ function OptionsPage() {
                 }
                 placeholder="https://powermaxx.test"
               />
+
+              <div style={fieldWrapStyle}>
+                <label style={labelStyle} htmlFor="opt-default-marketplace">
+                  Marketplace Default
+                </label>
+                <select
+                  id="opt-default-marketplace"
+                  name="default_marketplace"
+                  style={inputStyle}
+                  value={settings.defaultMarketplace}
+                  onChange={(event) =>
+                    update({
+                      defaultMarketplace:
+                        event.target.value === "tiktok_shop"
+                          ? "tiktok_shop"
+                          : "shopee"
+                    })
+                  }>
+                  <option value="shopee">Shopee</option>
+                  <option value="tiktok_shop">TikTok Shop</option>
+                </select>
+              </div>
             </div>
           </section>
 
@@ -325,6 +348,185 @@ function OptionsPage() {
           </section>
 
           <section style={sectionStyle}>
+            <h2 style={sectionTitleStyle}>Shopee AWB</h2>
+            <p style={sectionTextStyle}>
+              Dipakai untuk aksi Download AWB dan Fetch + Send + AWB.
+            </p>
+            <div style={fieldGridStyle}>
+              <Field
+                id="opt-shopee-awb-package"
+                name="shopee_awb_package_endpoint"
+                label="Get Package Endpoint"
+                type="url"
+                value={settings.marketplaces.shopee.awb.packageEndpoint}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          packageEndpoint: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-create-job"
+                name="shopee_awb_create_job_endpoint"
+                label="Create SD Job Endpoint"
+                type="url"
+                value={settings.marketplaces.shopee.awb.createJobEndpoint}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          createJobEndpoint: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-download-job"
+                name="shopee_awb_download_job_endpoint"
+                label="Download SD Job Endpoint"
+                type="url"
+                value={settings.marketplaces.shopee.awb.downloadJobEndpoint}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          downloadJobEndpoint: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-region"
+                name="shopee_awb_region_id"
+                label="Region ID"
+                value={settings.marketplaces.shopee.awb.regionId}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          regionId: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-async"
+                name="shopee_awb_async_version"
+                label="Async SD Version"
+                value={settings.marketplaces.shopee.awb.asyncSdVersion}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          asyncSdVersion: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-file-type"
+                name="shopee_awb_file_type"
+                label="File Type"
+                value={settings.marketplaces.shopee.awb.fileType}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          fileType: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-file-name"
+                name="shopee_awb_file_name"
+                label="File Name"
+                value={settings.marketplaces.shopee.awb.fileName}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          fileName: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-shopee-awb-file-contents"
+                name="shopee_awb_file_contents"
+                label="File Contents"
+                value={settings.marketplaces.shopee.awb.fileContents}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      shopee: {
+                        ...settings.marketplaces.shopee,
+                        awb: {
+                          ...settings.marketplaces.shopee.awb,
+                          fileContents: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
             <h2 style={sectionTitleStyle}>TikTok Shop</h2>
             <div style={fieldGridStyle}>
               <Field
@@ -378,6 +580,54 @@ function OptionsPage() {
                       tiktok_shop: {
                         ...settings.marketplaces.tiktok_shop,
                         statementDetailEndpoint: value
+                      }
+                    }
+                  })
+                }
+              />
+            </div>
+          </section>
+
+          <section style={sectionStyle}>
+            <h2 style={sectionTitleStyle}>TikTok Shop AWB</h2>
+            <div style={fieldGridStyle}>
+              <Field
+                id="opt-tiktok-awb-generate"
+                name="tiktok_awb_generate_endpoint"
+                label="Generate Endpoint"
+                type="url"
+                value={settings.marketplaces.tiktok_shop.awb.generateEndpoint}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      tiktok_shop: {
+                        ...settings.marketplaces.tiktok_shop,
+                        awb: {
+                          ...settings.marketplaces.tiktok_shop.awb,
+                          generateEndpoint: value
+                        }
+                      }
+                    }
+                  })
+                }
+              />
+
+              <Field
+                id="opt-tiktok-awb-file-prefix"
+                name="tiktok_awb_file_prefix"
+                label="File Prefix"
+                value={settings.marketplaces.tiktok_shop.awb.filePrefix}
+                onChange={(value) =>
+                  update({
+                    marketplaces: {
+                      ...settings.marketplaces,
+                      tiktok_shop: {
+                        ...settings.marketplaces.tiktok_shop,
+                        awb: {
+                          ...settings.marketplaces.tiktok_shop.awb,
+                          filePrefix: value
+                        }
                       }
                     }
                   })

@@ -6,6 +6,7 @@ import type {
   RuntimeRunWorkerRequest,
   RuntimeSingleRequest
 } from "~src/core/messages/contracts"
+import { executeAwbOnActiveMarketplaceTab } from "~src/features/awb/background/run-awb"
 import { bindMarketplaceTabTrackers, executeFetchSendOnActiveMarketplaceTab, resolveMarketplaceTab } from "~src/features/fetch-send/background/run-fetch-send"
 import { bindBridgeAutoInjection, ensureBridgeForBaseUrls } from "~src/features/bridge/background/bridge-register"
 import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
@@ -247,6 +248,62 @@ const handlePopupFetchSend = async (message: RuntimeRequestMessage) => {
   }
 }
 
+const handlePopupDownloadAwb = async (message: RuntimeRequestMessage) => {
+  if (message.type !== "POWERMAXX_POPUP_DOWNLOAD_AWB") {
+    return {
+      ok: false,
+      error: "Invalid message type."
+    }
+  }
+
+  const settings = await loadSettings()
+  const awbResult = await executeAwbOnActiveMarketplaceTab(settings)
+
+  return {
+    ok: Boolean(awbResult.ok),
+    error: awbResult.error || "",
+    mode: "single",
+    count: 1,
+    running: false,
+    openUrl: awbResult.openUrl || "",
+    awbOk: Boolean(awbResult.ok),
+    awb: awbResult
+  }
+}
+
+const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
+  if (message.type !== "POWERMAXX_POPUP_FETCH_SEND_AWB") {
+    return {
+      ok: false,
+      error: "Invalid message type."
+    }
+  }
+
+  const settings = await loadSettings()
+  const fetchResult = await executeFetchSendOnActiveMarketplaceTab(
+    "fetch_send",
+    settings
+  )
+  const awbResult = await executeAwbOnActiveMarketplaceTab(settings)
+
+  const errors = [fetchResult.ok ? "" : fetchResult.error, awbResult.ok ? "" : awbResult.error]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+
+  return {
+    ok: Boolean(fetchResult.ok && awbResult.ok),
+    error: errors.join(" | "),
+    mode: "single",
+    count: 1,
+    running: false,
+    orderId: fetchResult.orderId || "",
+    openUrl: fetchResult.openUrl || awbResult.openUrl || "",
+    fetchOk: Boolean(fetchResult.ok),
+    awbOk: Boolean(awbResult.ok),
+    awb: awbResult
+  }
+}
+
 const handleSingle = async (
   message: RuntimeSingleRequest,
   senderTabId?: number | null
@@ -384,6 +441,16 @@ const onRuntimeMessage = (
 
   if (message.type === "POWERMAXX_POPUP_FETCH_SEND") {
     reply(handlePopupFetchSend(message))
+    return true
+  }
+
+  if (message.type === "POWERMAXX_POPUP_DOWNLOAD_AWB") {
+    reply(handlePopupDownloadAwb(message))
+    return true
+  }
+
+  if (message.type === "POWERMAXX_POPUP_FETCH_SEND_AWB") {
+    reply(handlePopupFetchSendAwb(message))
     return true
   }
 

@@ -13,6 +13,15 @@ type RuntimeResult = {
   error?: string
   orderId?: string
   openUrl?: string
+  fetchOk?: boolean
+  awbOk?: boolean
+  awb?: {
+    ok?: boolean
+    error?: string
+    downloaded?: boolean
+    fileName?: string
+    openUrl?: string
+  }
 }
 
 const SPACE = {
@@ -393,6 +402,117 @@ function PopupPage() {
     }
   }
 
+  const runDownloadAwb = async () => {
+    if (!loggedIn) {
+      setStatusMessage("Belum login.", "warning")
+      return
+    }
+
+    try {
+      setShowAccountMenu(false)
+      setBusyAction(true)
+      setStatusMessage("Menjalankan AWB...", "neutral")
+
+      const response = await sendRuntimeMessage<RuntimeResult>({
+        type: "POWERMAXX_POPUP_DOWNLOAD_AWB"
+      })
+
+      if (!response?.ok) {
+        setStatusMessage(response?.error || "Download AWB gagal.", "error")
+        return
+      }
+
+      if (response.awb?.openUrl && !response.awb?.downloaded) {
+        await chrome.tabs.create({ url: response.awb.openUrl })
+      }
+
+      if (response.awb?.downloaded) {
+        setStatusMessage(
+          response.awb.fileName
+            ? `AWB diunduh: ${response.awb.fileName}`
+            : "AWB berhasil diunduh.",
+          "success"
+        )
+        return
+      }
+
+      setStatusMessage("AWB berhasil diproses.", "success")
+    } catch (error) {
+      setStatusMessage(
+        `Download AWB gagal: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    } finally {
+      setBusyAction(false)
+    }
+  }
+
+  const runFetchSendAwb = async () => {
+    if (!loggedIn) {
+      setStatusMessage("Belum login.", "warning")
+      return
+    }
+
+    try {
+      setShowAccountMenu(false)
+      setBusyAction(true)
+      setStatusMessage("Menjalankan fetch + send + AWB...", "neutral")
+
+      const response = await sendRuntimeMessage<RuntimeResult>({
+        type: "POWERMAXX_POPUP_FETCH_SEND_AWB"
+      })
+
+      const fetchOk = Boolean(response?.fetchOk)
+      const awbOk = Boolean(response?.awbOk)
+
+      if (response?.awb?.openUrl && !response.awb?.downloaded) {
+        await chrome.tabs.create({ url: response.awb.openUrl })
+      } else if (response?.openUrl) {
+        await chrome.tabs.create({ url: response.openUrl })
+      }
+
+      if (fetchOk && awbOk) {
+        const awbLabel = response.awb?.downloaded
+          ? response.awb.fileName
+            ? `AWB diunduh (${response.awb.fileName}).`
+            : "AWB diunduh."
+          : "AWB diproses."
+        setStatusMessage(
+          response.orderId
+            ? `Sukses. Order: ${response.orderId}. ${awbLabel}`
+            : `Sukses. ${awbLabel}`,
+          "success"
+        )
+        return
+      }
+
+      if (fetchOk && !awbOk) {
+        setStatusMessage(
+          `Data terkirim, tapi AWB gagal. ${response?.error || ""}`.trim(),
+          "warning"
+        )
+        return
+      }
+
+      if (!fetchOk && awbOk) {
+        setStatusMessage(
+          `AWB berhasil, tapi fetch/send gagal. ${response?.error || ""}`.trim(),
+          "warning"
+        )
+        return
+      }
+
+      setStatusMessage(response?.error || "Fetch + Send + AWB gagal.", "error")
+    } catch (error) {
+      setStatusMessage(
+        `Fetch + Send + AWB gagal: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    } finally {
+      setBusyAction(false)
+    }
+  }
+
   return (
     <main style={pageStyle}>
       <div style={headerWrapStyle} ref={headerWrapRef}>
@@ -529,8 +649,20 @@ function PopupPage() {
               marginBottom: SPACE.sm
             }}
             disabled={busyLogin || busyAction}
+            onClick={runFetchSendAwb}>
+            Fetch + Send + AWB
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...buttonStyle("neutral", busyLogin || busyAction),
+              ...fullButtonStyle,
+              marginBottom: SPACE.sm
+            }}
+            disabled={busyLogin || busyAction}
             onClick={() => runFetchSend("fetch_send")}>
-            Update Both
+            Fetch + Send
           </button>
 
           <div style={rowStyle}>
@@ -555,6 +687,18 @@ function PopupPage() {
               Update Income
             </button>
           </div>
+
+          <button
+            type="button"
+            style={{
+              ...buttonStyle("neutral", busyLogin || busyAction),
+              ...fullButtonStyle,
+              marginTop: SPACE.sm
+            }}
+            disabled={busyLogin || busyAction}
+            onClick={runDownloadAwb}>
+            Download AWB
+          </button>
         </section>
       )}
     </main>

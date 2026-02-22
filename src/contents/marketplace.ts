@@ -1,6 +1,10 @@
 import type { PlasmoCSConfig } from "plasmo"
 
-import type { ContentFetchRequest } from "~src/core/messages/contracts"
+import type {
+  ContentAwbRequest,
+  ContentFetchRequest
+} from "~src/core/messages/contracts"
+import { runMarketplaceAwbInPage } from "~src/features/awb/content/page-runner"
 import { runMarketplaceFetchInPage } from "~src/features/fetch-send/content/page-runner"
 
 export const config: PlasmoCSConfig = {
@@ -13,25 +17,44 @@ export const config: PlasmoCSConfig = {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== "POWERMAXX_CONTENT_FETCH_SEND") {
+  if (!message || typeof message !== "object" || !("type" in message)) {
     return
   }
 
-  const payload = message as ContentFetchRequest
+  if (message.type === "POWERMAXX_CONTENT_FETCH_SEND") {
+    const payload = message as ContentFetchRequest
 
-  runMarketplaceFetchInPage(payload.request)
-    .then((result) => {
-      sendResponse(result)
-    })
-    .catch((error) => {
-      sendResponse({
-        ok: false,
-        error: String((error as Error)?.message || error),
-        orderRawJson: null,
-        incomeRawJson: null,
-        incomeDetailRawJson: null
+    runMarketplaceFetchInPage(payload.request)
+      .then((result) => {
+        sendResponse(result)
       })
-    })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: String((error as Error)?.message || error),
+          orderRawJson: null,
+          incomeRawJson: null,
+          incomeDetailRawJson: null
+        })
+      })
 
-  return true
+    return true
+  }
+
+  if (message.type === "POWERMAXX_CONTENT_AWB") {
+    const payload = message as ContentAwbRequest
+
+    runMarketplaceAwbInPage(payload.request)
+      .then((result) => {
+        sendResponse(result)
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: String((error as Error)?.message || error)
+        })
+      })
+
+    return true
+  }
 })
