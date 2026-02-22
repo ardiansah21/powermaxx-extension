@@ -16,3 +16,4 @@
 - [2026-02-22] Ditambahkan tab `Bulk Operator` dan `Viewer` sebagai UI internal extension baru agar eksekusi batch + inspeksi payload tidak lagi bergantung pada halaman legacy.
 - [2026-02-22] Bulk headless memakai fallback auto-marketplace berbasis default settings (`shopee` -> `tiktok_shop` atau sebaliknya) untuk order yang dikirim tanpa marketplace eksplisit.
 - [2026-02-22] Viewer extension baru menghasilkan sheet TSV (order + income) dari payload marketplace untuk mendekati parity output viewer legacy tanpa menambah dependency eksternal.
+- [2026-02-22] UI popup disederhanakan ke pola aksi utama + aksi lanjutan (collapsible), dan halaman options dipecah per section collapsible agar tetap familiar seperti flow lama namun lebih rapi.

@@ -185,6 +185,11 @@ const rowStyle: React.CSSProperties = {
   gap: SPACE.sm
 }
 
+const actionStackStyle: React.CSSProperties = {
+  display: "grid",
+  gap: SPACE.sm
+}
+
 const fullButtonStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box"
@@ -205,6 +210,19 @@ const buttonStyle = (
   opacity: disabled ? 0.6 : 1
 })
 
+const advancedToggleStyle = (
+  open: boolean,
+  disabled = false
+): React.CSSProperties => ({
+  ...buttonStyle("neutral", disabled),
+  ...fullButtonStyle,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  fontWeight: 600,
+  color: open ? "#1d4ed8" : "#0f172a"
+})
+
 function PopupPage() {
   const headerWrapRef = useRef<HTMLDivElement | null>(null)
   const [baseUrl, setBaseUrl] = useState("")
@@ -212,6 +230,7 @@ function PopupPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showAccountMenu, setShowAccountMenu] = useState(false)
+  const [showAdvancedActions, setShowAdvancedActions] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [status, setStatus] = useState("Memuat sesi...")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
@@ -237,6 +256,9 @@ function PopupPage() {
     setEmail(settings.auth.email || "")
     setLoggedIn(active)
     setShowAccountMenu(false)
+    if (!active) {
+      setShowAdvancedActions(false)
+    }
     return { active, email: settings.auth.email || "", baseUrl: settings.auth.baseUrl || "" }
   }
 
@@ -666,42 +688,19 @@ function PopupPage() {
 
       {loggedIn && (
         <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Fetch + Send</h2>
-          <button
-            type="button"
-            style={{
-              ...buttonStyle("primary", busyLogin || busyAction),
-              ...fullButtonStyle,
-              marginBottom: SPACE.sm
-            }}
-            disabled={busyLogin || busyAction}
-            onClick={runFetchSendAwb}>
-            Fetch + Send + AWB
-          </button>
-
-          <button
-            type="button"
-            style={{
-              ...buttonStyle("neutral", busyLogin || busyAction),
-              ...fullButtonStyle,
-              marginBottom: SPACE.sm
-            }}
-            disabled={busyLogin || busyAction}
-            onClick={() => runFetchSend("fetch_send")}>
-            Fetch + Send
-          </button>
-
-          <div style={rowStyle}>
+          <h2 style={sectionTitleStyle}>Aksi Utama</h2>
+          <div style={actionStackStyle}>
             <button
               type="button"
               style={{
-                ...buttonStyle("neutral", busyLogin || busyAction),
+                ...buttonStyle("primary", busyLogin || busyAction),
                 ...fullButtonStyle
               }}
               disabled={busyLogin || busyAction}
-              onClick={() => runFetchSend("update_order")}>
-              Update Order
+              onClick={runFetchSendAwb}>
+              Fetch + Send + AWB
             </button>
+
             <button
               type="button"
               style={{
@@ -709,45 +708,83 @@ function PopupPage() {
                 ...fullButtonStyle
               }}
               disabled={busyLogin || busyAction}
-              onClick={() => runFetchSend("update_income")}>
-              Update Income
+              onClick={() => runFetchSend("fetch_send")}>
+              Fetch + Send
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", busyLogin || busyAction),
+                ...fullButtonStyle
+              }}
+              disabled={busyLogin || busyAction}
+              onClick={runDownloadAwb}>
+              Download AWB
             </button>
           </div>
 
           <button
             type="button"
             style={{
-              ...buttonStyle("neutral", busyLogin || busyAction),
-              ...fullButtonStyle,
-              marginTop: SPACE.sm
+              ...advancedToggleStyle(showAdvancedActions, busyLogin || busyAction),
+              marginTop: SPACE.md
             }}
             disabled={busyLogin || busyAction}
-            onClick={runDownloadAwb}>
-            Download AWB
+            onClick={() => setShowAdvancedActions((value) => !value)}>
+            <span>Aksi Lanjutan</span>
+            <span aria-hidden="true">{showAdvancedActions ? "▾" : "▸"}</span>
           </button>
 
-          <div style={{ ...rowStyle, marginTop: SPACE.sm }}>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", busyLogin || busyAction),
-                ...fullButtonStyle
-              }}
-              disabled={busyLogin || busyAction}
-              onClick={openBulkOperator}>
-              Bulk Operator
-            </button>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", busyLogin || busyAction),
-                ...fullButtonStyle
-              }}
-              disabled={busyLogin || busyAction}
-              onClick={openViewer}>
-              Viewer
-            </button>
-          </div>
+          {showAdvancedActions && (
+            <div style={{ ...actionStackStyle, marginTop: SPACE.sm }}>
+              <div style={rowStyle}>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={() => runFetchSend("update_order")}>
+                  Update Order
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={() => runFetchSend("update_income")}>
+                  Update Income
+                </button>
+              </div>
+
+              <div style={rowStyle}>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={openBulkOperator}>
+                  Bulk Operator
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={openViewer}>
+                  Viewer
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </main>

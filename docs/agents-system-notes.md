@@ -10,7 +10,7 @@
 - Error logging mengikuti format terstruktur: `feature`, `domain`, `step`, `context`.
 - Popup login disederhanakan: saat belum login hanya menampilkan form `Email + Password`; section `Fetch + Send` disembunyikan sampai sesi aktif.
 - Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
-- Popup sesi aktif sekarang mendukung aksi `Fetch + Send + AWB` dan `Download AWB` selain aksi fetch/send dasar.
+- Popup sesi aktif sekarang memakai pola `Aksi Utama` + `Aksi Lanjutan` (collapsible) agar UI tetap ringkas, dengan aksi utama `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
 - Popup sesi aktif sekarang juga menyediakan shortcut ke tab `Bulk Operator` dan `Viewer`.
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
@@ -24,3 +24,4 @@
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
 - Bulk headless sekarang mendukung fallback auto-marketplace: saat order berlabel `auto`/kosong, runner mencoba marketplace default lalu otomatis mencoba marketplace alternatif.
 - Event worker/bulk juga dibroadcast ke runtime message internal (`POWERMAXX_INTERNAL_WORKER_EVENT`) untuk konsumsi UI tab operator.
+- Options page sekarang memakai section collapsible per domain (Auth, Shopee, Shopee AWB, TikTok, TikTok AWB) untuk mengurangi kepadatan form.

@@ -61,15 +61,33 @@ const sectionStyle: React.CSSProperties = {
   boxShadow: "0 1px 1px rgba(15, 23, 42, 0.03)"
 }
 
+const sectionHeaderButtonStyle: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  padding: 0,
+  margin: 0,
+  background: "transparent",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  textAlign: "left",
+  cursor: "pointer",
+  color: "#0f172a"
+}
+
 const sectionTitleStyle: React.CSSProperties = {
-  margin: "0 0 8px",
+  margin: 0,
   fontSize: 16
 }
 
 const sectionTextStyle: React.CSSProperties = {
-  margin: `0 0 ${SPACE.md}px`,
+  margin: `${SPACE.sm}px 0 0`,
   color: "#64748b",
   fontSize: 13
+}
+
+const sectionBodyStyle: React.CSSProperties = {
+  marginTop: SPACE.md
 }
 
 const formStackStyle: React.CSSProperties = {
@@ -133,6 +151,13 @@ type FieldProps = {
   type?: "text" | "url" | "email"
 }
 
+type SectionKey =
+  | "auth"
+  | "shopee"
+  | "shopeeAwb"
+  | "tiktok"
+  | "tiktokAwb"
+
 const Field = ({
   id,
   name,
@@ -163,6 +188,13 @@ function OptionsPage() {
   const [status, setStatus] = useState("Memuat pengaturan...")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [saving, setSaving] = useState(false)
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+    auth: true,
+    shopee: true,
+    shopeeAwb: false,
+    tiktok: true,
+    tiktokAwb: false
+  })
 
   useEffect(() => {
     loadSettings().then((loaded) => {
@@ -189,6 +221,13 @@ function OptionsPage() {
         ...patch
       }
     })
+  }
+
+  const toggleSection = (section: SectionKey) => {
+    setOpenSections((current) => ({
+      ...current,
+      [section]: !current[section]
+    }))
   }
 
   const save = async (event?: React.FormEvent) => {
@@ -239,401 +278,456 @@ function OptionsPage() {
       <form onSubmit={save}>
         <div style={formStackStyle}>
           <section style={sectionStyle}>
-            <h2 style={sectionTitleStyle}>Autentikasi</h2>
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("auth")}
+              aria-expanded={openSections.auth}>
+              <h2 style={sectionTitleStyle}>Autentikasi</h2>
+              <span aria-hidden="true">{openSections.auth ? "▾" : "▸"}</span>
+            </button>
             <p style={sectionTextStyle}>
               Login dilakukan dari popup. Pengaturan di sini hanya untuk Base URL API.
             </p>
-            <div style={fieldGridStyle}>
-              <Field
-                id="opt-base-url"
-                name="auth_base_url"
-                label="Base URL API"
-                type="url"
-                value={settings.auth.baseUrl}
-                onChange={(value) =>
-                  update({
-                    auth: {
-                      ...settings.auth,
-                      baseUrl: value
+            {openSections.auth && (
+              <div style={sectionBodyStyle}>
+                <div style={fieldGridStyle}>
+                  <Field
+                    id="opt-base-url"
+                    name="auth_base_url"
+                    label="Base URL API"
+                    type="url"
+                    value={settings.auth.baseUrl}
+                    onChange={(value) =>
+                      update({
+                        auth: {
+                          ...settings.auth,
+                          baseUrl: value
+                        }
+                      })
                     }
-                  })
-                }
-                placeholder="https://powermaxx.test"
-              />
+                    placeholder="https://powermaxx.test"
+                  />
 
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle} htmlFor="opt-default-marketplace">
-                  Marketplace Default
-                </label>
-                <select
-                  id="opt-default-marketplace"
-                  name="default_marketplace"
-                  style={inputStyle}
-                  value={settings.defaultMarketplace}
-                  onChange={(event) =>
-                    update({
-                      defaultMarketplace:
-                        event.target.value === "tiktok_shop"
-                          ? "tiktok_shop"
-                          : "shopee"
-                    })
-                  }>
-                  <option value="shopee">Shopee</option>
-                  <option value="tiktok_shop">TikTok Shop</option>
-                </select>
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle} htmlFor="opt-default-marketplace">
+                      Marketplace Default
+                    </label>
+                    <select
+                      id="opt-default-marketplace"
+                      name="default_marketplace"
+                      style={inputStyle}
+                      value={settings.defaultMarketplace}
+                      onChange={(event) =>
+                        update({
+                          defaultMarketplace:
+                            event.target.value === "tiktok_shop"
+                              ? "tiktok_shop"
+                              : "shopee"
+                        })
+                      }>
+                      <option value="shopee">Shopee</option>
+                      <option value="tiktok_shop">TikTok Shop</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </section>
 
           <section style={sectionStyle}>
-            <h2 style={sectionTitleStyle}>Shopee</h2>
-            <div style={fieldGridStyle}>
-              <Field
-                id="opt-shopee-search"
-                name="shopee_search_endpoint"
-                label="Search Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.searchEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        searchEndpoint: value
-                      }
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("shopee")}
+              aria-expanded={openSections.shopee}>
+              <h2 style={sectionTitleStyle}>Shopee</h2>
+              <span aria-hidden="true">{openSections.shopee ? "▾" : "▸"}</span>
+            </button>
+            {openSections.shopee && (
+              <div style={sectionBodyStyle}>
+                <div style={fieldGridStyle}>
+                  <Field
+                    id="opt-shopee-search"
+                    name="shopee_search_endpoint"
+                    label="Search Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.searchEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            searchEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-income"
-                name="shopee_income_endpoint"
-                label="Income Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.incomeEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        incomeEndpoint: value
-                      }
+                  <Field
+                    id="opt-shopee-income"
+                    name="shopee_income_endpoint"
+                    label="Income Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.incomeEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            incomeEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-order"
-                name="shopee_order_endpoint"
-                label="Order Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.orderEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        orderEndpoint: value
-                      }
+                  <Field
+                    id="opt-shopee-order"
+                    name="shopee_order_endpoint"
+                    label="Order Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.orderEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            orderEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
-            </div>
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           <section style={sectionStyle}>
-            <h2 style={sectionTitleStyle}>Shopee AWB</h2>
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("shopeeAwb")}
+              aria-expanded={openSections.shopeeAwb}>
+              <h2 style={sectionTitleStyle}>Shopee AWB</h2>
+              <span aria-hidden="true">{openSections.shopeeAwb ? "▾" : "▸"}</span>
+            </button>
             <p style={sectionTextStyle}>
               Dipakai untuk aksi Download AWB dan Fetch + Send + AWB.
             </p>
-            <div style={fieldGridStyle}>
-              <Field
-                id="opt-shopee-awb-package"
-                name="shopee_awb_package_endpoint"
-                label="Get Package Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.awb.packageEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          packageEndpoint: value
+            {openSections.shopeeAwb && (
+              <div style={sectionBodyStyle}>
+                <div style={fieldGridStyle}>
+                  <Field
+                    id="opt-shopee-awb-package"
+                    name="shopee_awb_package_endpoint"
+                    label="Get Package Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.awb.packageEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              packageEndpoint: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-create-job"
-                name="shopee_awb_create_job_endpoint"
-                label="Create SD Job Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.awb.createJobEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          createJobEndpoint: value
+                  <Field
+                    id="opt-shopee-awb-create-job"
+                    name="shopee_awb_create_job_endpoint"
+                    label="Create SD Job Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.awb.createJobEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              createJobEndpoint: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-download-job"
-                name="shopee_awb_download_job_endpoint"
-                label="Download SD Job Endpoint"
-                type="url"
-                value={settings.marketplaces.shopee.awb.downloadJobEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          downloadJobEndpoint: value
+                  <Field
+                    id="opt-shopee-awb-download-job"
+                    name="shopee_awb_download_job_endpoint"
+                    label="Download SD Job Endpoint"
+                    type="url"
+                    value={settings.marketplaces.shopee.awb.downloadJobEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              downloadJobEndpoint: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-region"
-                name="shopee_awb_region_id"
-                label="Region ID"
-                value={settings.marketplaces.shopee.awb.regionId}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          regionId: value
+                  <Field
+                    id="opt-shopee-awb-region"
+                    name="shopee_awb_region_id"
+                    label="Region ID"
+                    value={settings.marketplaces.shopee.awb.regionId}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              regionId: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-async"
-                name="shopee_awb_async_version"
-                label="Async SD Version"
-                value={settings.marketplaces.shopee.awb.asyncSdVersion}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          asyncSdVersion: value
+                  <Field
+                    id="opt-shopee-awb-async"
+                    name="shopee_awb_async_version"
+                    label="Async SD Version"
+                    value={settings.marketplaces.shopee.awb.asyncSdVersion}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              asyncSdVersion: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-file-type"
-                name="shopee_awb_file_type"
-                label="File Type"
-                value={settings.marketplaces.shopee.awb.fileType}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          fileType: value
+                  <Field
+                    id="opt-shopee-awb-file-type"
+                    name="shopee_awb_file_type"
+                    label="File Type"
+                    value={settings.marketplaces.shopee.awb.fileType}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              fileType: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-file-name"
-                name="shopee_awb_file_name"
-                label="File Name"
-                value={settings.marketplaces.shopee.awb.fileName}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          fileName: value
+                  <Field
+                    id="opt-shopee-awb-file-name"
+                    name="shopee_awb_file_name"
+                    label="File Name"
+                    value={settings.marketplaces.shopee.awb.fileName}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              fileName: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-shopee-awb-file-contents"
-                name="shopee_awb_file_contents"
-                label="File Contents"
-                value={settings.marketplaces.shopee.awb.fileContents}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      shopee: {
-                        ...settings.marketplaces.shopee,
-                        awb: {
-                          ...settings.marketplaces.shopee.awb,
-                          fileContents: value
+                  <Field
+                    id="opt-shopee-awb-file-contents"
+                    name="shopee_awb_file_contents"
+                    label="File Contents"
+                    value={settings.marketplaces.shopee.awb.fileContents}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          shopee: {
+                            ...settings.marketplaces.shopee,
+                            awb: {
+                              ...settings.marketplaces.shopee.awb,
+                              fileContents: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
-            </div>
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           <section style={sectionStyle}>
-            <h2 style={sectionTitleStyle}>TikTok Shop</h2>
-            <div style={fieldGridStyle}>
-              <Field
-                id="opt-tiktok-order"
-                name="tiktok_order_endpoint"
-                label="Order Endpoint"
-                type="url"
-                value={settings.marketplaces.tiktok_shop.orderEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      tiktok_shop: {
-                        ...settings.marketplaces.tiktok_shop,
-                        orderEndpoint: value
-                      }
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("tiktok")}
+              aria-expanded={openSections.tiktok}>
+              <h2 style={sectionTitleStyle}>TikTok Shop</h2>
+              <span aria-hidden="true">{openSections.tiktok ? "▾" : "▸"}</span>
+            </button>
+            {openSections.tiktok && (
+              <div style={sectionBodyStyle}>
+                <div style={fieldGridStyle}>
+                  <Field
+                    id="opt-tiktok-order"
+                    name="tiktok_order_endpoint"
+                    label="Order Endpoint"
+                    type="url"
+                    value={settings.marketplaces.tiktok_shop.orderEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          tiktok_shop: {
+                            ...settings.marketplaces.tiktok_shop,
+                            orderEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-tiktok-statement"
-                name="tiktok_statement_endpoint"
-                label="Statement Endpoint"
-                type="url"
-                value={settings.marketplaces.tiktok_shop.statementEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      tiktok_shop: {
-                        ...settings.marketplaces.tiktok_shop,
-                        statementEndpoint: value
-                      }
+                  <Field
+                    id="opt-tiktok-statement"
+                    name="tiktok_statement_endpoint"
+                    label="Statement Endpoint"
+                    type="url"
+                    value={settings.marketplaces.tiktok_shop.statementEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          tiktok_shop: {
+                            ...settings.marketplaces.tiktok_shop,
+                            statementEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-tiktok-statement-detail"
-                name="tiktok_statement_detail_endpoint"
-                label="Statement Detail Endpoint"
-                type="url"
-                value={settings.marketplaces.tiktok_shop.statementDetailEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      tiktok_shop: {
-                        ...settings.marketplaces.tiktok_shop,
-                        statementDetailEndpoint: value
-                      }
+                  <Field
+                    id="opt-tiktok-statement-detail"
+                    name="tiktok_statement_detail_endpoint"
+                    label="Statement Detail Endpoint"
+                    type="url"
+                    value={settings.marketplaces.tiktok_shop.statementDetailEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          tiktok_shop: {
+                            ...settings.marketplaces.tiktok_shop,
+                            statementDetailEndpoint: value
+                          }
+                        }
+                      })
                     }
-                  })
-                }
-              />
-            </div>
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           <section style={sectionStyle}>
-            <h2 style={sectionTitleStyle}>TikTok Shop AWB</h2>
-            <div style={fieldGridStyle}>
-              <Field
-                id="opt-tiktok-awb-generate"
-                name="tiktok_awb_generate_endpoint"
-                label="Generate Endpoint"
-                type="url"
-                value={settings.marketplaces.tiktok_shop.awb.generateEndpoint}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      tiktok_shop: {
-                        ...settings.marketplaces.tiktok_shop,
-                        awb: {
-                          ...settings.marketplaces.tiktok_shop.awb,
-                          generateEndpoint: value
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("tiktokAwb")}
+              aria-expanded={openSections.tiktokAwb}>
+              <h2 style={sectionTitleStyle}>TikTok Shop AWB</h2>
+              <span aria-hidden="true">{openSections.tiktokAwb ? "▾" : "▸"}</span>
+            </button>
+            {openSections.tiktokAwb && (
+              <div style={sectionBodyStyle}>
+                <div style={fieldGridStyle}>
+                  <Field
+                    id="opt-tiktok-awb-generate"
+                    name="tiktok_awb_generate_endpoint"
+                    label="Generate Endpoint"
+                    type="url"
+                    value={settings.marketplaces.tiktok_shop.awb.generateEndpoint}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          tiktok_shop: {
+                            ...settings.marketplaces.tiktok_shop,
+                            awb: {
+                              ...settings.marketplaces.tiktok_shop.awb,
+                              generateEndpoint: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
+                  />
 
-              <Field
-                id="opt-tiktok-awb-file-prefix"
-                name="tiktok_awb_file_prefix"
-                label="File Prefix"
-                value={settings.marketplaces.tiktok_shop.awb.filePrefix}
-                onChange={(value) =>
-                  update({
-                    marketplaces: {
-                      ...settings.marketplaces,
-                      tiktok_shop: {
-                        ...settings.marketplaces.tiktok_shop,
-                        awb: {
-                          ...settings.marketplaces.tiktok_shop.awb,
-                          filePrefix: value
+                  <Field
+                    id="opt-tiktok-awb-file-prefix"
+                    name="tiktok_awb_file_prefix"
+                    label="File Prefix"
+                    value={settings.marketplaces.tiktok_shop.awb.filePrefix}
+                    onChange={(value) =>
+                      update({
+                        marketplaces: {
+                          ...settings.marketplaces,
+                          tiktok_shop: {
+                            ...settings.marketplaces.tiktok_shop,
+                            awb: {
+                              ...settings.marketplaces.tiktok_shop.awb,
+                              filePrefix: value
+                            }
+                          }
                         }
-                      }
+                      })
                     }
-                  })
-                }
-              />
-            </div>
+                  />
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
