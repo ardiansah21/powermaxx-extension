@@ -1,4 +1,11 @@
 import { logger } from "~src/core/logging/logger"
+import {
+  buildAutomationActionHint,
+  classifyAutomationErrorCode,
+  sanitizeErrorMessage,
+  sanitizeTechnicalError,
+  toAutomationStatus
+} from "~src/core/errors/automation-error"
 import type {
   BridgeAction,
   NormalizedOrder,
@@ -15,15 +22,6 @@ const toActionMode = (action: BridgeAction) => {
 }
 
 const activeBulkSessionBySource = new Map<string, { runId: string; workerId: string }>()
-
-const sanitizeErrorMessage = (value: unknown) =>
-  String(value || "").replace(/^Error:\s*/i, "").trim()
-
-const classifyErrorCode = (message: unknown) => {
-  const raw = String(message || "").toLowerCase()
-  if (raw.includes("timeout") || raw.includes("timed out")) return "TIMEOUT"
-  return "PROCESSING_FAILED"
-}
 
 export const runBulkHeadless = async (args: {
   message: RuntimeBulkRequest
@@ -83,6 +81,7 @@ export const runBulkHeadless = async (args: {
     for (let index = 0; index < orders.length; index += 1) {
       const order = orders[index]
       const runOrderId = `${runId}-${index + 1}`
+      const startedAt = Date.now()
 
       await sendBridgeWorkerEvent(senderTabId, "run_order_started", {
         run_order_id: runOrderId,
@@ -104,7 +103,7 @@ export const runBulkHeadless = async (args: {
         if (result.ok) {
           stats.success += 1
         } else {
-          const errorCode = classifyErrorCode(result.error)
+          const errorCode = classifyAutomationErrorCode(result.error)
           if (errorCode === "TIMEOUT") {
             stats.timed_out += 1
           } else {
@@ -112,36 +111,44 @@ export const runBulkHeadless = async (args: {
           }
         }
 
-        const errorCode = result.ok ? null : classifyErrorCode(result.error)
+        const errorCode = result.ok ? null : classifyAutomationErrorCode(result.error)
         const status = result.ok
           ? "success"
-          : errorCode === "TIMEOUT"
-            ? "timed_out"
-            : "failed"
+          : toAutomationStatus(errorCode)
         const errorMessage = result.ok ? null : sanitizeErrorMessage(result.error)
+        const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
 
         await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
           run_order_id: runOrderId,
           status,
           error_message: errorMessage,
           error_code: errorCode,
+          technical_error: technicalError,
+          action_hint: result.ok ? null : buildAutomationActionHint(errorCode),
+          duration_ms: Date.now() - startedAt,
           report_ok: true
         })
       } catch (error) {
         stats.processed += 1
         const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
-        const errorCode = classifyErrorCode(errorMessage)
+        const errorCode = classifyAutomationErrorCode(errorMessage)
         if (errorCode === "TIMEOUT") {
           stats.timed_out += 1
         } else {
           stats.failed += 1
         }
+        const technicalError = sanitizeTechnicalError(
+          (error as Error)?.stack || (error as Error)?.message || error
+        )
 
         await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
           run_order_id: runOrderId,
-          status: errorCode === "TIMEOUT" ? "timed_out" : "failed",
+          status: toAutomationStatus(errorCode),
           error_message: errorMessage,
           error_code: errorCode,
+          technical_error: technicalError,
+          action_hint: buildAutomationActionHint(errorCode),
+          duration_ms: Date.now() - startedAt,
           report_ok: false
         })
       }
@@ -169,7 +176,11 @@ export const runBulkHeadless = async (args: {
       run_id: runId,
       worker_id: workerId,
       error_code: "RUN_FAILED",
-      error_message: String((error as Error)?.message || error)
+      error_message: String((error as Error)?.message || error),
+      technical_error: sanitizeTechnicalError(
+        (error as Error)?.stack || (error as Error)?.message || error
+      ),
+      action_hint: buildAutomationActionHint("EXTENSION_RUNTIME")
     })
 
     activeBulkSessionBySource.delete(sourceKey)

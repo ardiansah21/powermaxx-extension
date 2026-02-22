@@ -11,3 +11,4 @@
 - [2026-02-23] Hardening worker parity: report `run_order` memakai dedupe key per `run_id:run_order_id` + retry terbatas untuk error transient (status 0/408/429).
 - [2026-02-23] Bulk headless diberi overlap guard per sumber trigger (`tab-{id}` / `global`) agar run ganda dari sumber yang sama tidak berjalan paralel.
 - [2026-02-23] Bridge coexistence guard aktif: saat extension legacy masih merespons event `powermaxx`, bridge Plasmo menahan eksekusi lokal agar mengurangi risiko proses ganda pada browser yang memasang extension lama + baru bersamaan.
+- [2026-02-23] Error taxonomy untuk mode `single`/`bulk`/`worker` diseragamkan lewat modul shared `src/core/errors/automation-error.ts` agar status, kode error, dan action hint konsisten.

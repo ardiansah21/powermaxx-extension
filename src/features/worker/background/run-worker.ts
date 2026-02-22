@@ -1,4 +1,12 @@
 import { logger } from "~src/core/logging/logger"
+import {
+  buildAutomationActionHint,
+  classifyAutomationErrorCode,
+  sanitizeErrorMessage,
+  sanitizeTechnicalError,
+  toAutomationErrorCode,
+  toAutomationStatus
+} from "~src/core/errors/automation-error"
 import { normalizeIdType, normalizeMarketplace, toActionMode } from "~src/core/messages/guards"
 import type {
   BridgeAction,
@@ -28,11 +36,6 @@ const DEFAULT_WORKER_API_PATHS = {
 const activeRunWorkerByKey = new Map<string, WorkerSession>()
 const activeRunWorkerByRunId = new Map<string, string>()
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const snippet = (value: unknown, max = 800) => {
-  const text = String(value || "")
-  if (text.length <= max) return text
-  return `${text.slice(0, max)}...`
-}
 
 const normalizePositiveInt = (
   value: unknown,
@@ -71,47 +74,6 @@ const normalizeWorkerAction = (value: unknown): BridgeAction => {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
-
-const sanitizeErrorMessage = (
-  value: unknown,
-  fallback = "Gagal memproses order marketplace."
-) => {
-  const message = String(value || "").replace(/^Error:\s*/i, "").trim()
-  return message || fallback
-}
-
-const sanitizeTechnicalError = (value: unknown) => snippet(value, 1200)
-
-const classifyErrorCode = (message: unknown) => {
-  const raw = String(message || "").toLowerCase()
-  if (!raw) return "UNKNOWN"
-  if (raw.includes("timeout") || raw.includes("timed out")) return "TIMEOUT"
-  if (raw.includes("cannot access contents of the page")) return "EXTENSION_PERMISSION"
-  if (raw.includes("failed to fetch")) return "NETWORK_OR_CORS"
-  if (raw.includes("unauthorized") || raw.includes("forbidden")) return "AUTH"
-  if (raw.includes("order tidak ditemukan")) return "ORDER_NOT_FOUND"
-  if (raw.includes("base url")) return "INVALID_BASE_URL"
-  return "UNKNOWN"
-}
-
-const buildActionHint = (errorCode: string) => {
-  if (errorCode === "TIMEOUT") {
-    return "Pastikan tab marketplace terbuka dan akun login, lalu jalankan ulang."
-  }
-  if (errorCode === "EXTENSION_PERMISSION") {
-    return "Berikan host permission extension untuk domain marketplace."
-  }
-  if (errorCode === "NETWORK_OR_CORS" || errorCode === "INVALID_BASE_URL") {
-    return "Periksa Base URL API, koneksi jaringan, dan kebijakan CORS server."
-  }
-  if (errorCode === "AUTH") {
-    return "Login ulang dari popup lalu jalankan ulang run."
-  }
-  if (errorCode === "ORDER_NOT_FOUND") {
-    return "Periksa mapping order identifier dari run queue backend."
-  }
-  return "Coba ulang proses order dan cek log worker."
-}
 
 const getLocalStorage = () => chrome.storage?.local
 
@@ -385,6 +347,169 @@ const normalizeClaimedOrder = (
   }
 }
 
+const normalizeOrderChanges = (value: unknown) => {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((entry) => {
+      if (!isObject(entry)) return null
+      const field = String(entry.field || entry.name || entry.key || "").trim()
+      if (!field) return null
+
+      return {
+        field,
+        before:
+          entry.before !== undefined
+            ? entry.before
+            : entry.old !== undefined
+              ? entry.old
+              : null,
+        after:
+          entry.after !== undefined
+            ? entry.after
+            : entry.new !== undefined
+              ? entry.new
+              : null
+      }
+    })
+    .filter(Boolean)
+}
+
+const extractChangesFromFetchResult = (fetchResult: Record<string, unknown> | null) => {
+  if (!isObject(fetchResult)) return []
+
+  const changes = normalizeOrderChanges(fetchResult.changes)
+  if (changes.length) return changes
+
+  const mergedChanges: Array<{ field: string; before: unknown; after: unknown }> = []
+
+  const orderRawJson =
+    (fetchResult.orderRawJson as Record<string, unknown> | null) ||
+    (fetchResult.order_raw_json as Record<string, unknown> | null) ||
+    null
+
+  const incomeRawJson =
+    (fetchResult.incomeRawJson as Record<string, unknown> | null) ||
+    (fetchResult.income_raw_json as Record<string, unknown> | null) ||
+    null
+
+  const incomeDetailRawJson =
+    (fetchResult.incomeDetailRawJson as Record<string, unknown> | null) ||
+    (fetchResult.income_detail_raw_json as Record<string, unknown> | null) ||
+    null
+
+  if (orderRawJson !== null) {
+    mergedChanges.push({
+      field: "payload.order_raw_json",
+      before: null,
+      after: orderRawJson
+    })
+  }
+
+  if (incomeRawJson !== null || incomeDetailRawJson !== null) {
+    let normalizedIncomePayload = incomeRawJson
+
+    if (
+      isObject(normalizedIncomePayload) &&
+      incomeDetailRawJson !== null &&
+      !Object.prototype.hasOwnProperty.call(
+        normalizedIncomePayload,
+        "statement_transaction_detail"
+      )
+    ) {
+      normalizedIncomePayload = {
+        ...normalizedIncomePayload,
+        statement_transaction_detail: incomeDetailRawJson
+      }
+    } else if (!normalizedIncomePayload && incomeDetailRawJson !== null) {
+      normalizedIncomePayload = {
+        statement_transaction_detail: incomeDetailRawJson
+      }
+    }
+
+    mergedChanges.push({
+      field: "payload.income_raw_json",
+      before: null,
+      after: normalizedIncomePayload
+    })
+  }
+
+  return mergedChanges
+}
+
+const buildRunOrderReportPayload = (args: {
+  session: WorkerSession
+  order: NormalizedOrder
+  action: BridgeAction
+  status: "success" | "timed_out" | "failed"
+  errorCode: string | null
+  errorMessage: string | null
+  technicalError: string | null
+  durationMs: number
+  fetchResult: Record<string, unknown> | null
+}) => {
+  const {
+    session,
+    order,
+    action,
+    status,
+    errorCode,
+    errorMessage,
+    technicalError,
+    durationMs,
+    fetchResult
+  } = args
+
+  const orderRawJson =
+    (fetchResult?.orderRawJson as Record<string, unknown> | null) ||
+    (fetchResult?.order_raw_json as Record<string, unknown> | null) ||
+    null
+
+  const incomeRawJson =
+    (fetchResult?.incomeRawJson as Record<string, unknown> | null) ||
+    (fetchResult?.income_raw_json as Record<string, unknown> | null) ||
+    null
+
+  const incomeDetailRawJson =
+    (fetchResult?.incomeDetailRawJson as Record<string, unknown> | null) ||
+    (fetchResult?.income_detail_raw_json as Record<string, unknown> | null) ||
+    null
+
+  const fetchMeta =
+    (fetchResult?.fetchMeta as Record<string, unknown> | null) ||
+    (fetchResult?.fetch_meta as Record<string, unknown> | null) ||
+    null
+
+  return {
+    status,
+    error_code: errorCode,
+    error_message: errorMessage,
+    technical_error: technicalError,
+    changes: extractChangesFromFetchResult(fetchResult),
+    action_hint:
+      status === "success"
+        ? null
+        : buildAutomationActionHint(toAutomationErrorCode(errorCode)),
+    meta: {
+      worker_id: session.workerId,
+      extension_version: session.extensionVersion,
+      duration_ms: durationMs
+    },
+    marketplace: order.marketplace,
+    order_identifier: order.id,
+    id_type: order.idType,
+    action,
+    fetch_result: fetchResult
+      ? {
+          order_raw_json: orderRawJson,
+          income_raw_json: incomeRawJson,
+          income_detail_raw_json: incomeDetailRawJson,
+          fetch_meta: fetchMeta
+        }
+      : null
+  }
+}
+
 const claimNextRunOrder = async (session: WorkerSession) => {
   const url = buildWorkerUrl(session.baseUrl, session.apiPaths.claimNext, {
     runId: session.runId
@@ -582,29 +707,27 @@ const processClaimedRunOrder = async (
     const durationMs = Date.now() - startedAt
     const errorCode = result.ok
       ? null
-      : classifyErrorCode(sanitizeErrorMessage(result.error))
+      : classifyAutomationErrorCode(sanitizeErrorMessage(result.error))
     const status = result.ok
       ? "success"
-      : errorCode === "TIMEOUT"
-        ? "timed_out"
-        : "failed"
+      : toAutomationStatus(errorCode)
     const errorMessage = result.ok
       ? null
       : sanitizeErrorMessage(result.error)
+    const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
 
-    const reportPayload = {
+    const reportPayload = buildRunOrderReportPayload({
+      session,
+      order,
+      action: claimed.action,
       status,
-      error_code: errorCode,
-      error_message: errorMessage,
-      technical_error: result.ok ? null : sanitizeTechnicalError(result.error),
-      changes: [],
-      action_hint: result.ok ? null : buildActionHint(String(errorCode || "")),
-      meta: {
-        worker_id: session.workerId,
-        extension_version: session.extensionVersion,
-        duration_ms: durationMs
-      }
-    }
+      errorCode: errorCode,
+      errorMessage,
+      technicalError,
+      durationMs,
+      fetchResult:
+        (result.fetchResult as unknown as Record<string, unknown> | undefined) || null
+    })
 
     const reportResponse = await reportRunOrder(session, runOrderId, reportPayload)
 
@@ -617,6 +740,8 @@ const processClaimedRunOrder = async (
       status,
       error_code: errorCode,
       error_message: errorMessage,
+      technical_error: technicalError,
+      action_hint: result.ok ? null : buildAutomationActionHint(errorCode),
       report_ok: reportResponse.ok
     })
 
@@ -625,29 +750,36 @@ const processClaimedRunOrder = async (
       status,
       errorCode: errorCode,
       errorMessage: errorMessage,
+      technicalError,
+      actionHint: result.ok ? null : buildAutomationActionHint(errorCode),
+      fetchResult:
+        (result.fetchResult as unknown as Record<string, unknown> | undefined) || null,
       durationMs
     }
   } catch (error) {
     const durationMs = Date.now() - startedAt
     const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
-    const errorCode = classifyErrorCode(errorMessage)
-    const status = errorCode === "TIMEOUT" ? "timed_out" : "failed"
+    const errorCode = classifyAutomationErrorCode(errorMessage)
+    const status = toAutomationStatus(errorCode)
+    const technicalError = sanitizeTechnicalError(
+      (error as Error)?.stack || (error as Error)?.message || error
+    )
 
-    const reportResponse = await reportRunOrder(session, runOrderId, {
-      status,
-      error_code: errorCode,
-      error_message: errorMessage,
-      technical_error: sanitizeTechnicalError(
-        (error as Error)?.stack || (error as Error)?.message || error
-      ),
-      changes: [],
-      action_hint: buildActionHint(errorCode),
-      meta: {
-        worker_id: session.workerId,
-        extension_version: session.extensionVersion,
-        duration_ms: durationMs
-      }
-    })
+    const reportResponse = await reportRunOrder(
+      session,
+      runOrderId,
+      buildRunOrderReportPayload({
+        session,
+        order,
+        action: claimed.action,
+        status,
+        errorCode,
+        errorMessage,
+        technicalError,
+        durationMs,
+        fetchResult: null
+      })
+    )
 
     if (!reportResponse.ok) {
       session.stats.report_failed += 1
@@ -658,6 +790,8 @@ const processClaimedRunOrder = async (
       status,
       error_code: errorCode,
       error_message: errorMessage,
+      technical_error: technicalError,
+      action_hint: buildAutomationActionHint(errorCode),
       report_ok: reportResponse.ok
     })
 
@@ -666,6 +800,9 @@ const processClaimedRunOrder = async (
       status,
       errorCode: errorCode,
       errorMessage: errorMessage,
+      technicalError,
+      actionHint: buildAutomationActionHint(errorCode),
+      fetchResult: null,
       durationMs
     }
   } finally {
@@ -860,7 +997,7 @@ export const startRunWorker = async (args: {
   runWorkerLoop(session, settings)
     .catch(async (error) => {
       const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
-      const errorCode = classifyErrorCode(errorMessage)
+      const errorCode = classifyAutomationErrorCode(errorMessage)
 
       logger.error("Worker run failed", {
         feature: "worker",
@@ -884,7 +1021,7 @@ export const startRunWorker = async (args: {
         technical_error: sanitizeTechnicalError(
           (error as Error)?.stack || (error as Error)?.message || error
         ),
-        action_hint: buildActionHint(errorCode),
+        action_hint: buildAutomationActionHint(errorCode),
         stats: session.stats
       })
     })

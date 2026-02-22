@@ -14,3 +14,5 @@
 - Worker dan bulk menggunakan klasifikasi error dasar (`TIMEOUT`, `PROCESSING_FAILED`, dll) agar event/status lebih konsisten untuk debugging.
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.
 - Jika ada response bridge eksternal (legacy) yang terdeteksi dalam grace window, handler bridge extension baru membatalkan eksekusi lokal request tersebut untuk menekan duplicate side effects.
+- `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
+- Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
