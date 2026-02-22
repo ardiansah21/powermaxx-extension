@@ -73,6 +73,8 @@ npm run package
    - `npm run build`
 3. Lihat checklist browser E2E di:
    - `docs/bridge-regression-checklist.md`
+4. Jalankan verifikasi agregat sekali perintah:
+   - `npm run verify`
 
 ## Troubleshooting
 

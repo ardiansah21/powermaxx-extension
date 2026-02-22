@@ -8,7 +8,8 @@
     "dev": "plasmo dev",
     "build": "plasmo build",
     "package": "plasmo package",
-    "check:bridge-regression": "node scripts/check-bridge-regression.mjs"
+    "check:bridge-regression": "node scripts/check-bridge-regression.mjs",
+    "verify": "npm run check:bridge-regression && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "plasmo": "0.90.5",
