@@ -48,7 +48,10 @@ npm run package
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
 - `src/popup.tsx`: login (`email + password`) dan kontrol cepat `Fetch + Send` + `AWB`.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB.
+- `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
+- `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
 - `src/features/awb/*`: flow AWB Shopee/TikTok (content runner + background executor).
+- `src/features/viewer/shared/storage.ts`: persistence payload viewer di `chrome.storage.local`.
 - `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
 
 ## Permission Model
@@ -64,7 +67,9 @@ npm run package
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Di popup klik `Fetch + Send`.
 6. Uji `Fetch + Send + AWB` dan `Download AWB`.
-7. Verifikasi response status dan event bridge untuk mode web integration.
+7. Dari popup buka `Bulk Operator`, kirim batch kecil, lalu pastikan progress event `run_started` sampai `run_finished` muncul.
+8. Dari popup buka `Viewer` dan pastikan payload terakhir bisa dilihat/copy/download.
+9. Verifikasi response status dan event bridge untuk mode web integration.
 
 ## Regression Guard
 
@@ -85,3 +90,4 @@ npm run package
 - Jika `Bridge belum aktif`: grant optional host permission dan register bridge origin.
 - Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
 - Jika AWB gagal: cek endpoint AWB di Options, pastikan tab yang aktif adalah halaman detail order marketplace.
+- Jika bulk mode auto gagal: cek `defaultMarketplace` di Options, lalu pastikan order memang tersedia di marketplace fallback.

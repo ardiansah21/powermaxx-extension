@@ -672,6 +672,8 @@ const processClaimedRunOrder = async (
   }
 
   await sendBridgeWorkerEvent(session.sourceTabId, "run_order_started", {
+    run_id: session.runId,
+    worker_id: session.workerId,
     run_order_id: runOrderId,
     identifier: order.id,
     marketplace: order.marketplace,
@@ -736,6 +738,8 @@ const processClaimedRunOrder = async (
     }
 
     await sendBridgeWorkerEvent(session.sourceTabId, "run_order_finished", {
+      run_id: session.runId,
+      worker_id: session.workerId,
       run_order_id: runOrderId,
       status,
       error_code: errorCode,
@@ -786,6 +790,8 @@ const processClaimedRunOrder = async (
     }
 
     await sendBridgeWorkerEvent(session.sourceTabId, "run_order_finished", {
+      run_id: session.runId,
+      worker_id: session.workerId,
       run_order_id: runOrderId,
       status,
       error_code: errorCode,

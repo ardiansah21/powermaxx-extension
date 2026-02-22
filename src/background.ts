@@ -16,6 +16,7 @@ import {
   updateAuthSession
 } from "~src/core/settings/storage"
 import { SETTINGS_KEY, normalizeBaseUrl } from "~src/core/settings/schema"
+import { saveViewerPayload } from "~src/features/viewer/shared/storage"
 import { startRunWorker } from "~src/features/worker/background/run-worker"
 
 const syncBridgeFromSettings = async () => {
@@ -78,6 +79,32 @@ const fetchProfile = async (baseUrl: string, token: string) => {
     status: response.status,
     data
   }
+}
+
+const storeViewerFromFetchResult = async (args: {
+  marketplace: "shopee" | "tiktok_shop"
+  actionMode: "fetch_send" | "update_order" | "update_income"
+  orderId?: string
+  fetchResult?: {
+    orderRawJson?: Record<string, unknown> | null
+    incomeRawJson?: Record<string, unknown> | null
+    incomeDetailRawJson?: Record<string, unknown> | null
+    fetchMeta?: Record<string, unknown>
+  }
+}) => {
+  const fetchResult = args.fetchResult
+  if (!fetchResult) return
+
+  await saveViewerPayload({
+    updatedAt: Date.now(),
+    marketplace: args.marketplace,
+    actionMode: args.actionMode,
+    orderId: String(args.orderId || "").trim(),
+    orderRawJson: fetchResult.orderRawJson || null,
+    incomeRawJson: fetchResult.incomeRawJson || null,
+    incomeDetailRawJson: fetchResult.incomeDetailRawJson || null,
+    fetchMeta: fetchResult.fetchMeta || {}
+  })
 }
 
 const handlePopupLogin = async (message: RuntimeRequestMessage) => {
@@ -237,6 +264,15 @@ const handlePopupFetchSend = async (message: RuntimeRequestMessage) => {
     settings
   )
 
+  if (result.fetchResult && (result.marketplace === "shopee" || result.marketplace === "tiktok_shop")) {
+    void storeViewerFromFetchResult({
+      marketplace: result.marketplace,
+      actionMode: message.actionMode,
+      orderId: result.orderId,
+      fetchResult: result.fetchResult
+    })
+  }
+
   return {
     ok: Boolean(result.ok),
     error: result.error || "",
@@ -285,6 +321,15 @@ const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
     settings
   )
   const awbResult = await executeAwbOnActiveMarketplaceTab(settings)
+
+  if (fetchResult.fetchResult && (fetchResult.marketplace === "shopee" || fetchResult.marketplace === "tiktok_shop")) {
+    void storeViewerFromFetchResult({
+      marketplace: fetchResult.marketplace,
+      actionMode: "fetch_send",
+      orderId: fetchResult.orderId,
+      fetchResult: fetchResult.fetchResult
+    })
+  }
 
   const errors = [fetchResult.ok ? "" : fetchResult.error, awbResult.ok ? "" : awbResult.error]
     .map((value) => String(value || "").trim())

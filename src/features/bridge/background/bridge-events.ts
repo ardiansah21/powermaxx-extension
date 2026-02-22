@@ -1,10 +1,34 @@
 import { logger } from "~src/core/logging/logger"
 
+const broadcastInternalWorkerEvent = (
+  event: string,
+  payload: Record<string, unknown>
+) => {
+  if (!chrome.runtime?.sendMessage) return
+
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: "POWERMAXX_INTERNAL_WORKER_EVENT",
+        event,
+        payload
+      },
+      () => {
+        void chrome.runtime.lastError
+      }
+    )
+  } catch (_error) {
+    // ignore
+  }
+}
+
 export const sendBridgeWorkerEvent = async (
   tabId: number | null | undefined,
   event: string,
   payload: Record<string, unknown> = {}
 ) => {
+  broadcastInternalWorkerEvent(event, payload)
+
   if (!tabId) return
 
   if (!chrome.tabs?.sendMessage) return

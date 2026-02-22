@@ -11,11 +11,15 @@
 - Popup login disederhanakan: saat belum login hanya menampilkan form `Email + Password`; section `Fetch + Send` disembunyikan sampai sesi aktif.
 - Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
 - Popup sesi aktif sekarang mendukung aksi `Fetch + Send + AWB` dan `Download AWB` selain aksi fetch/send dasar.
+- Popup sesi aktif sekarang juga menyediakan shortcut ke tab `Bulk Operator` dan `Viewer`.
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
+- Viewer payload disimpan di key `powermaxxViewerPayload` (chrome.storage.local) saat flow popup `Fetch + Send` atau `Fetch + Send + AWB` berhasil fetch data.
 - Worker `run_order report` memakai dedupe key per `run_id:run_order_id` dan disimpan sementara di `chrome.storage.local` untuk mencegah report duplikat saat retry/restart.
 - Worker dan bulk menggunakan klasifikasi error dasar (`TIMEOUT`, `PROCESSING_FAILED`, dll) agar event/status lebih konsisten untuk debugging.
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.
 - Jika ada response bridge eksternal (legacy) yang terdeteksi dalam grace window, handler bridge extension baru membatalkan eksekusi lokal request tersebut untuk menekan duplicate side effects.
 - `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
+- Bulk headless sekarang mendukung fallback auto-marketplace: saat order berlabel `auto`/kosong, runner mencoba marketplace default lalu otomatis mencoba marketplace alternatif.
+- Event worker/bulk juga dibroadcast ke runtime message internal (`POWERMAXX_INTERNAL_WORKER_EVENT`) untuk konsumsi UI tab operator.

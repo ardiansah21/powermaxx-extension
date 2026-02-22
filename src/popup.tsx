@@ -402,6 +402,32 @@ function PopupPage() {
     }
   }
 
+  const openBulkOperator = async () => {
+    try {
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL("tabs/bulk.html")
+      })
+    } catch (error) {
+      setStatusMessage(
+        `Gagal membuka Bulk Operator: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    }
+  }
+
+  const openViewer = async () => {
+    try {
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL("tabs/viewer.html")
+      })
+    } catch (error) {
+      setStatusMessage(
+        `Gagal membuka Viewer: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    }
+  }
+
   const runDownloadAwb = async () => {
     if (!loggedIn) {
       setStatusMessage("Belum login.", "warning")
@@ -699,6 +725,29 @@ function PopupPage() {
             onClick={runDownloadAwb}>
             Download AWB
           </button>
+
+          <div style={{ ...rowStyle, marginTop: SPACE.sm }}>
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", busyLogin || busyAction),
+                ...fullButtonStyle
+              }}
+              disabled={busyLogin || busyAction}
+              onClick={openBulkOperator}>
+              Bulk Operator
+            </button>
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", busyLogin || busyAction),
+                ...fullButtonStyle
+              }}
+              disabled={busyLogin || busyAction}
+              onClick={openViewer}>
+              Viewer
+            </button>
+          </div>
         </section>
       )}
     </main>

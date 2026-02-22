@@ -23,6 +23,73 @@ const toActionMode = (action: BridgeAction) => {
 
 const activeBulkSessionBySource = new Map<string, { runId: string; workerId: string }>()
 
+interface BulkOrderExecutionResult {
+  ok: boolean
+  error?: string
+}
+
+const normalizeBulkIdType = (value: NormalizedOrder["idType"]) =>
+  value === "order_id" || value === "order_sn" ? value : "order_sn"
+
+const buildBulkOrderCandidates = (
+  order: NormalizedOrder,
+  settings: PowermaxxSettings
+) => {
+  if (order.marketplace === "shopee" || order.marketplace === "tiktok_shop") {
+    return [
+      {
+        ...order,
+        idType: normalizeBulkIdType(order.idType)
+      }
+    ]
+  }
+
+  const primary = settings.defaultMarketplace
+  const secondary = primary === "shopee" ? "tiktok_shop" : "shopee"
+  const marketplaces: Array<"shopee" | "tiktok_shop"> = [primary, secondary]
+
+  return marketplaces.map((marketplace) => ({
+    id: order.id,
+    marketplace,
+    idType: normalizeBulkIdType(order.idType)
+  }))
+}
+
+const executeFetchSendWithAutoMarketplace = async (args: {
+  order: NormalizedOrder
+  action: BridgeAction
+  settings: PowermaxxSettings
+}): Promise<BulkOrderExecutionResult> => {
+  const candidates = buildBulkOrderCandidates(args.order, args.settings)
+  const errors: string[] = []
+
+  for (const candidate of candidates) {
+    const result = await executeFetchSendByOrder({
+      order: candidate,
+      actionMode: toActionMode(args.action),
+      settings: args.settings,
+      timeoutMs: 180000
+    })
+
+    if (result.ok) {
+      return {
+        ok: true,
+        error: ""
+      }
+    }
+
+    errors.push(`${candidate.marketplace}: ${String(result.error || "gagal")}`)
+  }
+
+  return {
+    ok: false,
+    error:
+      candidates.length > 1
+        ? `Auto marketplace gagal (${errors.join(" | ")})`
+        : errors[0] || "Proses bulk gagal."
+  }
+}
+
 export const runBulkHeadless = async (args: {
   message: RuntimeBulkRequest
   senderTabId?: number | null
@@ -84,6 +151,8 @@ export const runBulkHeadless = async (args: {
       const startedAt = Date.now()
 
       await sendBridgeWorkerEvent(senderTabId, "run_order_started", {
+        run_id: runId,
+        worker_id: workerId,
         run_order_id: runOrderId,
         identifier: order.id,
         marketplace: order.marketplace,
@@ -91,11 +160,10 @@ export const runBulkHeadless = async (args: {
       })
 
       try {
-        const result = await executeFetchSendByOrder({
+        const result = await executeFetchSendWithAutoMarketplace({
           order,
-          actionMode: toActionMode(message.action),
-          settings,
-          timeoutMs: 180000
+          action: message.action,
+          settings
         })
 
         stats.processed += 1
@@ -119,6 +187,8 @@ export const runBulkHeadless = async (args: {
         const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
 
         await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
+          run_id: runId,
+          worker_id: workerId,
           run_order_id: runOrderId,
           status,
           error_message: errorMessage,
@@ -142,6 +212,8 @@ export const runBulkHeadless = async (args: {
         )
 
         await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
+          run_id: runId,
+          worker_id: workerId,
           run_order_id: runOrderId,
           status: toAutomationStatus(errorCode),
           error_message: errorMessage,
