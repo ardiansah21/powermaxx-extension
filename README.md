@@ -64,6 +64,16 @@ npm run package
 5. Di popup klik `Fetch + Send`.
 6. Verifikasi response status dan event bridge untuk mode web integration.
 
+## Regression Guard
+
+1. Jalankan static guard kontrak bridge:
+   - `npm run check:bridge-regression`
+2. Lanjutkan dengan build check:
+   - `npx tsc --noEmit`
+   - `npm run build`
+3. Lihat checklist browser E2E di:
+   - `docs/bridge-regression-checklist.md`
+
 ## Troubleshooting
 
 - Jika muncul `Sesi login belum tersedia`: login dulu dari Popup (email + password).
