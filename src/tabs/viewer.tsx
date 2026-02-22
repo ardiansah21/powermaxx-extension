@@ -5,7 +5,6 @@ import {
   loadViewerPayload,
   type ViewerPayload
 } from "~src/features/viewer/shared/storage"
-import { buildViewerSheets } from "~src/features/viewer/shared/sheets"
 
 type StatusTone = "neutral" | "success" | "warning" | "error"
 
@@ -121,44 +120,6 @@ const actionsRowStyle: React.CSSProperties = {
   marginBottom: 8
 }
 
-const sheetWrapStyle: React.CSSProperties = {
-  overflowX: "auto",
-  border: "1px solid #dbe4ee",
-  borderRadius: 10
-}
-
-const sheetTableStyle: React.CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  minWidth: 520
-}
-
-const sheetThStyle: React.CSSProperties = {
-  borderBottom: "1px solid #dbe4ee",
-  borderRight: "1px solid #dbe4ee",
-  padding: "7px 8px",
-  textAlign: "left",
-  fontSize: 12,
-  background: "#f8fafc",
-  color: "#334155",
-  whiteSpace: "nowrap"
-}
-
-const sheetTdStyle: React.CSSProperties = {
-  borderBottom: "1px solid #eef2f7",
-  borderRight: "1px solid #eef2f7",
-  padding: "7px 8px",
-  fontSize: 12,
-  color: "#0f172a",
-  whiteSpace: "nowrap"
-}
-
-const mutedStyle: React.CSSProperties = {
-  margin: 0,
-  color: "#64748b",
-  fontSize: 13
-}
-
 const toPrettyJson = (value: unknown) => {
   if (!value) return ""
 
@@ -212,7 +173,6 @@ function ViewerTabPage() {
     [payload]
   )
   const fetchMetaJson = useMemo(() => toPrettyJson(payload?.fetchMeta), [payload])
-  const sheets = useMemo(() => buildViewerSheets(payload), [payload])
 
   const copyText = async (value: string, label: string) => {
     if (!value) {
@@ -341,110 +301,6 @@ function ViewerTabPage() {
           </button>
         </div>
         <pre style={codeStyle}>{orderJson || "// kosong"}</pre>
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Order Sheet</h2>
-        <div style={actionsRowStyle}>
-          <button
-            type="button"
-            style={buttonStyle("neutral")}
-            onClick={() => void copyText(sheets.orderSheet.copy, "Order Sheet")}>
-            Copy TSV
-          </button>
-          <button
-            type="button"
-            style={buttonStyle("neutral")}
-            onClick={() =>
-              downloadText(
-                "order-sheet.tsv",
-                sheets.orderSheet.copy,
-                "text/tab-separated-values"
-              )
-            }>
-            Download TSV
-          </button>
-        </div>
-        {sheets.orderSheet.headers.length && sheets.orderSheet.rows.length ? (
-          <div style={sheetWrapStyle}>
-            <table style={sheetTableStyle}>
-              <thead>
-                <tr>
-                  {sheets.orderSheet.headers.map((label, headerIndex) => (
-                    <th key={`order-th-${headerIndex}`} style={sheetThStyle}>
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sheets.orderSheet.rows.map((row, rowIndex) => (
-                  <tr key={`order-row-${rowIndex}`}>
-                    {row.map((cell, cellIndex) => (
-                      <td key={`order-cell-${rowIndex}-${cellIndex}`} style={sheetTdStyle}>
-                        {cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p style={mutedStyle}>Sheet order belum tersedia untuk payload ini.</p>
-        )}
-      </section>
-
-      <section style={cardStyle}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Income Sheet</h2>
-        <div style={actionsRowStyle}>
-          <button
-            type="button"
-            style={buttonStyle("neutral")}
-            onClick={() => void copyText(sheets.incomeSheet.copy, "Income Sheet")}>
-            Copy TSV
-          </button>
-          <button
-            type="button"
-            style={buttonStyle("neutral")}
-            onClick={() =>
-              downloadText(
-                "income-sheet.tsv",
-                sheets.incomeSheet.copy,
-                "text/tab-separated-values"
-              )
-            }>
-            Download TSV
-          </button>
-        </div>
-        {sheets.incomeSheet.headers.length && sheets.incomeSheet.rows.length ? (
-          <div style={sheetWrapStyle}>
-            <table style={sheetTableStyle}>
-              <thead>
-                <tr>
-                  {sheets.incomeSheet.headers.map((label, headerIndex) => (
-                    <th key={`income-th-${headerIndex}`} style={sheetThStyle}>
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sheets.incomeSheet.rows.map((row, rowIndex) => (
-                  <tr key={`income-row-${rowIndex}`}>
-                    {row.map((cell, cellIndex) => (
-                      <td key={`income-cell-${rowIndex}-${cellIndex}`} style={sheetTdStyle}>
-                        {cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p style={mutedStyle}>Sheet income belum tersedia untuk payload ini.</p>
-        )}
       </section>
 
       <section style={cardStyle}>

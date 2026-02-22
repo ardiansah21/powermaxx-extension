@@ -49,7 +49,7 @@ npm run package
 - `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` + `Aksi Lanjutan`.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
-- `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + sheet + raw JSON + copy/download).
+- `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
 - `src/features/awb/*`: flow AWB Shopee/TikTok (content runner + background executor).
 - `src/features/viewer/shared/storage.ts`: persistence payload viewer di `chrome.storage.local`.
 - `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
