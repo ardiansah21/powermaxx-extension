@@ -436,7 +436,7 @@ export const executeFetchSendByOrder = async (
   }
 }
 
-export const executeFetchSendOnActiveMarketplaceTab = async (
+const executeFetchOnlyOnActiveMarketplaceTabInternal = async (
   actionMode: ActionMode,
   settings: PowermaxxSettings
 ): Promise<ExecuteFetchSendResult> => {
@@ -480,6 +480,36 @@ export const executeFetchSendOnActiveMarketplaceTab = async (
       fetchResult
     }
   }
+
+  return {
+    ok: true,
+    error: "",
+    marketplace,
+    actionMode,
+    fetchResult
+  }
+}
+
+export const executeFetchOnlyOnActiveMarketplaceTab = async (
+  actionMode: ActionMode,
+  settings: PowermaxxSettings
+): Promise<ExecuteFetchSendResult> =>
+  executeFetchOnlyOnActiveMarketplaceTabInternal(actionMode, settings)
+
+export const executeFetchSendOnActiveMarketplaceTab = async (
+  actionMode: ActionMode,
+  settings: PowermaxxSettings
+): Promise<ExecuteFetchSendResult> => {
+  const fetchOnlyResult = await executeFetchOnlyOnActiveMarketplaceTabInternal(
+    actionMode,
+    settings
+  )
+
+  if (!fetchOnlyResult.ok || !fetchOnlyResult.fetchResult) {
+    return fetchOnlyResult
+  }
+
+  const { marketplace, fetchResult } = fetchOnlyResult
 
   const token = settings.auth.token || ""
   const baseUrl = settings.auth.baseUrl || ""

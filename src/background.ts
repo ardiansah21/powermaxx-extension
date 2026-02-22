@@ -1,13 +1,19 @@
 import { logger } from "~src/core/logging/logger"
 import { normalizeBridgeAction } from "~src/core/messages/guards"
 import type {
+  ActionMode,
   RuntimeBulkRequest,
   RuntimeRequestMessage,
   RuntimeRunWorkerRequest,
   RuntimeSingleRequest
 } from "~src/core/messages/contracts"
 import { executeAwbOnActiveMarketplaceTab } from "~src/features/awb/background/run-awb"
-import { bindMarketplaceTabTrackers, executeFetchSendOnActiveMarketplaceTab, resolveMarketplaceTab } from "~src/features/fetch-send/background/run-fetch-send"
+import {
+  bindMarketplaceTabTrackers,
+  executeFetchOnlyOnActiveMarketplaceTab,
+  executeFetchSendOnActiveMarketplaceTab,
+  resolveMarketplaceTab
+} from "~src/features/fetch-send/background/run-fetch-send"
 import { bindBridgeAutoInjection, ensureBridgeForBaseUrls } from "~src/features/bridge/background/bridge-register"
 import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
 import {
@@ -16,8 +22,16 @@ import {
   updateAuthSession
 } from "~src/core/settings/storage"
 import { SETTINGS_KEY, normalizeBaseUrl } from "~src/core/settings/schema"
-import { saveViewerPayload } from "~src/features/viewer/shared/storage"
+import {
+  loadViewerPayload,
+  saveViewerPayload
+} from "~src/features/viewer/shared/storage"
 import { startRunWorker } from "~src/features/worker/background/run-worker"
+import {
+  buildExportPayload,
+  extractPowermaxxOrderId,
+  sendExport
+} from "~src/features/fetch-send/background/export-client"
 
 const syncBridgeFromSettings = async () => {
   const settings = await loadSettings()
@@ -105,6 +119,69 @@ const storeViewerFromFetchResult = async (args: {
     incomeDetailRawJson: fetchResult.incomeDetailRawJson || null,
     fetchMeta: fetchResult.fetchMeta || {}
   })
+}
+
+const normalizeOrderIdentifier = (value: unknown) => {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "object") return ""
+  return String(value).trim()
+}
+
+const toRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+const deriveOrderIdentifierFromFetch = (args: {
+  marketplace: "shopee" | "tiktok_shop"
+  fetchResult?: {
+    orderRawJson?: Record<string, unknown> | null
+    incomeRawJson?: Record<string, unknown> | null
+    incomeDetailRawJson?: Record<string, unknown> | null
+    fetchMeta?: Record<string, unknown>
+  }
+}) => {
+  const orderRaw = args.fetchResult?.orderRawJson || null
+  const incomeRaw = args.fetchResult?.incomeRawJson || null
+  const orderData = toRecord(orderRaw?.data)
+  const incomeData = toRecord(incomeRaw?.data)
+
+  if (args.marketplace === "shopee") {
+    const orderInfo = toRecord(incomeData?.order_info)
+    return (
+      normalizeOrderIdentifier(orderData?.order_id) ||
+      normalizeOrderIdentifier(orderData?.order_sn) ||
+      normalizeOrderIdentifier(orderInfo?.order_id) ||
+      normalizeOrderIdentifier(orderInfo?.order_sn) ||
+      ""
+    )
+  }
+
+  const mainOrderList = Array.isArray(orderData?.main_order)
+    ? (orderData.main_order as Array<Record<string, unknown>>)
+    : []
+  const mainOrder = mainOrderList.length ? toRecord(mainOrderList[0]) : null
+
+  const orderRecords = Array.isArray(incomeData?.order_records)
+    ? (incomeData.order_records as Array<Record<string, unknown>>)
+    : []
+  const firstOrderRecord = orderRecords.length
+    ? toRecord(orderRecords[0])
+    : null
+
+  return (
+    normalizeOrderIdentifier(mainOrder?.main_order_id) ||
+    normalizeOrderIdentifier(firstOrderRecord?.reference_id) ||
+    normalizeOrderIdentifier(firstOrderRecord?.trade_order_id) ||
+    ""
+  )
+}
+
+const buildPowermaxxOrderUrl = (baseUrl: string, orderId: string) => {
+  const cleanBase = normalizeBaseUrl(baseUrl)
+  const cleanOrderId = normalizeOrderIdentifier(orderId)
+  if (!cleanBase || !cleanOrderId) return ""
+  return `${cleanBase}/admin/orders/${encodeURIComponent(cleanOrderId)}`
 }
 
 const handlePopupLogin = async (message: RuntimeRequestMessage) => {
@@ -284,6 +361,46 @@ const handlePopupFetchSend = async (message: RuntimeRequestMessage) => {
   }
 }
 
+const handlePopupFetchOnly = async (message: RuntimeRequestMessage) => {
+  if (message.type !== "POWERMAXX_POPUP_FETCH_ONLY") {
+    return {
+      ok: false,
+      error: "Invalid message type."
+    }
+  }
+
+  const settings = await loadSettings()
+  const actionMode: ActionMode = message.actionMode || "fetch_send"
+  const result = await executeFetchOnlyOnActiveMarketplaceTab(actionMode, settings)
+
+  if (
+    result.fetchResult &&
+    (result.marketplace === "shopee" || result.marketplace === "tiktok_shop")
+  ) {
+    const orderId =
+      deriveOrderIdentifierFromFetch({
+        marketplace: result.marketplace,
+        fetchResult: result.fetchResult
+      }) || result.orderId
+
+    void storeViewerFromFetchResult({
+      marketplace: result.marketplace,
+      actionMode,
+      orderId,
+      fetchResult: result.fetchResult
+    })
+  }
+
+  return {
+    ok: Boolean(result.ok),
+    error: result.error || "",
+    mode: "single",
+    count: 1,
+    running: false,
+    fetchedOnly: true
+  }
+}
+
 const handlePopupDownloadAwb = async (message: RuntimeRequestMessage) => {
   if (message.type !== "POWERMAXX_POPUP_DOWNLOAD_AWB") {
     return {
@@ -346,6 +463,91 @@ const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
     fetchOk: Boolean(fetchResult.ok),
     awbOk: Boolean(awbResult.ok),
     awb: awbResult
+  }
+}
+
+const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
+  if (message.type !== "POWERMAXX_POPUP_SEND_VIEWER") {
+    return {
+      ok: false,
+      error: "Invalid message type."
+    }
+  }
+
+  const settings = await loadSettings()
+  const token = String(settings.auth.token || "").trim()
+  const baseUrl = normalizeBaseUrl(settings.auth.baseUrl || "")
+
+  if (!token) {
+    return {
+      ok: false,
+      error: "Sesi login belum tersedia. Login dulu di popup."
+    }
+  }
+
+  if (!baseUrl) {
+    return {
+      ok: false,
+      error: "Base URL belum diatur."
+    }
+  }
+
+  const viewerPayload = await loadViewerPayload()
+  if (!viewerPayload) {
+    return {
+      ok: false,
+      error: "Belum ada data viewer. Jalankan Ambil Data atau Fetch + Send dulu."
+    }
+  }
+
+  if (
+    viewerPayload.marketplace !== "shopee" &&
+    viewerPayload.marketplace !== "tiktok_shop"
+  ) {
+    return {
+      ok: false,
+      error: "Marketplace viewer tidak valid."
+    }
+  }
+
+  if (!viewerPayload.orderRawJson && !viewerPayload.incomeRawJson) {
+    return {
+      ok: false,
+      error: "Payload viewer kosong. Jalankan Ambil Data dulu."
+    }
+  }
+
+  const exportPayload = buildExportPayload(viewerPayload.marketplace, {
+    orderRawJson: viewerPayload.orderRawJson || null,
+    incomeRawJson: viewerPayload.incomeRawJson || null,
+    incomeDetailRawJson: viewerPayload.incomeDetailRawJson || null
+  })
+
+  const exportResult = await sendExport(baseUrl, token, exportPayload)
+
+  if (exportResult.unauthenticated) {
+    await clearAuthSession()
+    return {
+      ok: false,
+      error: "Sesi login tidak valid atau kadaluarsa. Login ulang.",
+      mode: "single",
+      count: 1,
+      running: false
+    }
+  }
+
+  const orderId = extractPowermaxxOrderId(exportResult.data)
+
+  return {
+    ok: Boolean(exportResult.ok),
+    error: exportResult.ok
+      ? ""
+      : `Export gagal ${exportResult.status}: ${exportResult.statusText || "Error"}`,
+    mode: "single",
+    count: 1,
+    running: false,
+    orderId,
+    openUrl: buildPowermaxxOrderUrl(baseUrl, orderId)
   }
 }
 
@@ -489,6 +691,11 @@ const onRuntimeMessage = (
     return true
   }
 
+  if (message.type === "POWERMAXX_POPUP_FETCH_ONLY") {
+    reply(handlePopupFetchOnly(message))
+    return true
+  }
+
   if (message.type === "POWERMAXX_POPUP_DOWNLOAD_AWB") {
     reply(handlePopupDownloadAwb(message))
     return true
@@ -496,6 +703,11 @@ const onRuntimeMessage = (
 
   if (message.type === "POWERMAXX_POPUP_FETCH_SEND_AWB") {
     reply(handlePopupFetchSendAwb(message))
+    return true
+  }
+
+  if (message.type === "POWERMAXX_POPUP_SEND_VIEWER") {
+    reply(handlePopupSendViewer(message))
     return true
   }
 

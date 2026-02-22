@@ -15,6 +15,7 @@ type RuntimeResult = {
   openUrl?: string
   fetchOk?: boolean
   awbOk?: boolean
+  fetchedOnly?: boolean
   awb?: {
     ok?: boolean
     error?: string
@@ -424,6 +425,81 @@ function PopupPage() {
     }
   }
 
+  const runFetchOnly = async () => {
+    if (!loggedIn) {
+      setStatusMessage("Belum login.", "warning")
+      return
+    }
+
+    try {
+      setShowAccountMenu(false)
+      setBusyAction(true)
+      setStatusMessage("Mengambil data marketplace...", "neutral")
+
+      const response = await sendRuntimeMessage<RuntimeResult>({
+        type: "POWERMAXX_POPUP_FETCH_ONLY",
+        actionMode: "fetch_send"
+      })
+
+      if (!response?.ok) {
+        setStatusMessage(response?.error || "Ambil data gagal.", "error")
+        return
+      }
+
+      setStatusMessage(
+        "Data berhasil diambil dan disimpan di Viewer.",
+        "success"
+      )
+    } catch (error) {
+      setStatusMessage(
+        `Ambil data gagal: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    } finally {
+      setBusyAction(false)
+    }
+  }
+
+  const runSendViewer = async () => {
+    if (!loggedIn) {
+      setStatusMessage("Belum login.", "warning")
+      return
+    }
+
+    try {
+      setShowAccountMenu(false)
+      setBusyAction(true)
+      setStatusMessage("Mengirim data terakhir dari Viewer...", "neutral")
+
+      const response = await sendRuntimeMessage<RuntimeResult>({
+        type: "POWERMAXX_POPUP_SEND_VIEWER"
+      })
+
+      if (!response?.ok) {
+        setStatusMessage(response?.error || "Kirim data gagal.", "error")
+        return
+      }
+
+      if (response.openUrl) {
+        await chrome.tabs.create({ url: response.openUrl })
+      }
+
+      setStatusMessage(
+        response.orderId
+          ? `Export berhasil. Order: ${response.orderId}`
+          : "Export berhasil.",
+        "success"
+      )
+    } catch (error) {
+      setStatusMessage(
+        `Kirim data gagal: ${String((error as Error)?.message || error)}`,
+        "error"
+      )
+    } finally {
+      setBusyAction(false)
+    }
+  }
+
   const openBulkOperator = async () => {
     try {
       await chrome.tabs.create({
@@ -758,6 +834,29 @@ function PopupPage() {
                   disabled={busyLogin || busyAction}
                   onClick={() => runFetchSend("update_income")}>
                   Update Income
+                </button>
+              </div>
+
+              <div style={rowStyle}>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={runFetchOnly}>
+                  Ambil Data
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={runSendViewer}>
+                  Kirim Data
                 </button>
               </div>
 

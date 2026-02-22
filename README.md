@@ -46,7 +46,7 @@ npm run package
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` + `Aksi Lanjutan`.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` + `Aksi Lanjutan` (termasuk `Ambil Data` dan `Kirim Data` terpisah untuk parity legacy).
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -67,9 +67,10 @@ npm run package
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Di popup klik `Fetch + Send`.
 6. Uji `Fetch + Send + AWB` dan `Download AWB`.
-7. Dari popup buka `Bulk Operator`, kirim batch kecil, lalu pastikan progress event `run_started` sampai `run_finished` muncul.
-8. Dari popup buka `Viewer` dan pastikan payload terakhir bisa dilihat/copy/download.
-9. Verifikasi response status dan event bridge untuk mode web integration.
+7. Uji `Ambil Data`, lalu klik `Kirim Data` (tanpa fetch ulang) untuk memastikan parity flow legacy.
+8. Dari popup buka `Bulk Operator`, kirim batch kecil, lalu pastikan progress event `run_started` sampai `run_finished` muncul.
+9. Dari popup buka `Viewer` dan pastikan payload terakhir bisa dilihat/copy/download.
+10. Verifikasi response status dan event bridge untuk mode web integration.
 
 ## Regression Guard
 
@@ -80,6 +81,7 @@ npm run package
    - `npm run build`
 3. Lihat checklist browser E2E di:
    - `docs/bridge-regression-checklist.md`
+   - `docs/legacy-parity-cutover-checklist.md`
 4. Jalankan verifikasi agregat sekali perintah:
    - `npm run verify`
 
@@ -91,3 +93,4 @@ npm run package
 - Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
 - Jika AWB gagal: cek endpoint AWB di Options, pastikan tab yang aktif adalah halaman detail order marketplace.
 - Jika bulk mode auto gagal: cek `defaultMarketplace` di Options, lalu pastikan order memang tersedia di marketplace fallback.
+- Jika `Kirim Data` gagal karena payload kosong: jalankan `Ambil Data` dulu untuk menyimpan payload viewer.

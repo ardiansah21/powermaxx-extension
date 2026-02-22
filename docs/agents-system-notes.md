@@ -12,6 +12,7 @@
 - Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
 - Popup sesi aktif sekarang memakai pola `Aksi Utama` + `Aksi Lanjutan` (collapsible) agar UI tetap ringkas, dengan aksi utama `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
 - Popup sesi aktif sekarang juga menyediakan shortcut ke tab `Bulk Operator` dan `Viewer`.
+- Untuk parity legacy, popup `Aksi Lanjutan` menyediakan `Ambil Data` (fetch-only, simpan payload viewer) dan `Kirim Data` (send payload viewer terakhir tanpa fetch ulang).
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
 - Viewer payload disimpan di key `powermaxxViewerPayload` (chrome.storage.local) saat flow popup `Fetch + Send` atau `Fetch + Send + AWB` berhasil fetch data.

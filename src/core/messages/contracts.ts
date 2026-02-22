@@ -128,12 +128,21 @@ export interface RuntimePopupFetchSendRequest {
   actionMode: ActionMode
 }
 
+export interface RuntimePopupFetchOnlyRequest {
+  type: "POWERMAXX_POPUP_FETCH_ONLY"
+  actionMode: ActionMode
+}
+
 export interface RuntimePopupFetchSendAwbRequest {
   type: "POWERMAXX_POPUP_FETCH_SEND_AWB"
 }
 
 export interface RuntimePopupDownloadAwbRequest {
   type: "POWERMAXX_POPUP_DOWNLOAD_AWB"
+}
+
+export interface RuntimePopupSendViewerRequest {
+  type: "POWERMAXX_POPUP_SEND_VIEWER"
 }
 
 export interface RuntimePopupLoginRequest {
@@ -154,8 +163,10 @@ export type RuntimeRequestMessage =
   | RuntimeBulkRequest
   | RuntimeRunWorkerRequest
   | RuntimePopupFetchSendRequest
+  | RuntimePopupFetchOnlyRequest
   | RuntimePopupFetchSendAwbRequest
   | RuntimePopupDownloadAwbRequest
+  | RuntimePopupSendViewerRequest
   | RuntimePopupLoginRequest
   | RuntimePopupLogoutRequest
 
