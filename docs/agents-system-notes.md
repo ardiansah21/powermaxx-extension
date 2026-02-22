@@ -15,6 +15,7 @@
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
 - Viewer payload disimpan di key `powermaxxViewerPayload` (chrome.storage.local) saat flow popup `Fetch + Send` atau `Fetch + Send + AWB` berhasil fetch data.
+- Viewer menghasilkan sheet TSV (order + income) langsung dari payload Shopee/TikTok untuk memudahkan copy/download cepat tanpa membuka extension lama.
 - Worker `run_order report` memakai dedupe key per `run_id:run_order_id` dan disimpan sementara di `chrome.storage.local` untuk mencegah report duplikat saat retry/restart.
 - Worker dan bulk menggunakan klasifikasi error dasar (`TIMEOUT`, `PROCESSING_FAILED`, dll) agar event/status lebih konsisten untuk debugging.
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.
