@@ -251,58 +251,6 @@ const getEndpoints = (
   }
 }
 
-const toRecord = (value: unknown): Record<string, unknown> | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null
-  return value as Record<string, unknown>
-}
-
-const normalizeOrderRef = (value: unknown) => {
-  if (value === null || value === undefined) return ""
-  if (typeof value === "object") return ""
-  return String(value).trim()
-}
-
-const deriveOrderNoFromFetchResult = (
-  marketplace: Exclude<Marketplace, "auto">,
-  fetchResult?: FetchResultPayload | null
-) => {
-  if (!fetchResult) return ""
-
-  const orderRaw = fetchResult.orderRawJson || null
-  const incomeRaw = fetchResult.incomeRawJson || null
-  const orderData = toRecord(toRecord(orderRaw)?.data)
-  const incomeData = toRecord(toRecord(incomeRaw)?.data)
-
-  if (marketplace === "shopee") {
-    const orderInfo = toRecord(incomeData?.order_info)
-
-    return (
-      normalizeOrderRef(orderData?.order_sn) ||
-      normalizeOrderRef(orderInfo?.order_sn) ||
-      ""
-    )
-  }
-
-  const mainOrderList = Array.isArray(orderData?.main_order)
-    ? (orderData.main_order as Array<Record<string, unknown>>)
-    : []
-  const mainOrder = mainOrderList.length ? toRecord(mainOrderList[0]) : null
-
-  const orderRecords = Array.isArray(incomeData?.order_records)
-    ? (incomeData.order_records as Array<Record<string, unknown>>)
-    : []
-  const firstOrderRecord = orderRecords.length
-    ? toRecord(orderRecords[0])
-    : null
-
-  return (
-    normalizeOrderRef(mainOrder?.main_order_id) ||
-    normalizeOrderRef(firstOrderRecord?.reference_id) ||
-    normalizeOrderRef(firstOrderRecord?.trade_order_id) ||
-    ""
-  )
-}
-
 const sendContentFetchCommand = async (
   tabId: number,
   marketplace: Exclude<Marketplace, "auto">,
@@ -576,9 +524,7 @@ export const executeFetchSendByOrder = async (
     }
 
     const orderId = extractPowermaxxOrderId(exportResult.data)
-    const orderNo =
-      extractPowermaxxOrderNo(exportResult.data) ||
-      deriveOrderNoFromFetchResult(marketplace, fetchResult)
+    const orderNo = extractPowermaxxOrderNo(exportResult.data)
 
     return {
       ok: exportResult.ok,
@@ -726,9 +672,7 @@ export const executeFetchSendOnActiveMarketplaceTab = async (
   }
 
   const orderId = extractPowermaxxOrderId(exportResult.data)
-  const orderNo =
-    extractPowermaxxOrderNo(exportResult.data) ||
-    deriveOrderNoFromFetchResult(marketplace, fetchResult)
+  const orderNo = extractPowermaxxOrderNo(exportResult.data)
 
   return {
     ok: exportResult.ok,
