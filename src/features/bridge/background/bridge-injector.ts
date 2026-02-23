@@ -10,6 +10,7 @@ const installBridgeScript = () => {
   const SOURCE = "powermaxx"
   const RESPONSE_SOURCE = "powermaxx_extension"
   const WORKER_EVENT_TYPE = "worker_event"
+  const ACTIVE_INSTANCE_ATTR = "data-powermaxx-bridge-instance"
   const BRIDGE_OWNER = "powermaxx_plasmo"
   const OWNER_FIELD = "__pmx_bridge_owner"
   const REQUEST_ID_FIELD = "__pmx_request_id"
@@ -18,9 +19,31 @@ const installBridgeScript = () => {
   const EXTERNAL_RECENT_WINDOW_MS = 30_000
   const ALLOWED_ACTIONS = new Set(["update_order", "update_income", "update_both"])
   const ALLOWED_MODES = new Set(["single", "bulk"])
+  const instanceId = `${BRIDGE_OWNER}:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2, 10)}`
   let requestSequence = 0
   let externalBridgeLastSeenAt = 0
   let bridgeQueue = Promise.resolve()
+
+  const setAsActiveInstance = () => {
+    try {
+      document.documentElement?.setAttribute(ACTIVE_INSTANCE_ATTR, instanceId)
+    } catch (_error) {
+      // ignore
+    }
+  }
+
+  const isActiveInstance = () => {
+    try {
+      const activeId = document.documentElement?.getAttribute(ACTIVE_INSTANCE_ATTR)
+      return activeId === instanceId
+    } catch (_error) {
+      return true
+    }
+  }
+
+  setAsActiveInstance()
 
   const normalizeList = (value: unknown): string[] => {
     if (Array.isArray(value)) {
@@ -263,6 +286,8 @@ const installBridgeScript = () => {
   }
 
   const postResponse = (payload: Record<string, unknown>, requestId?: string) => {
+    if (!isActiveInstance()) return
+
     const response = buildResponsePayload(payload)
 
     window.postMessage(
@@ -281,6 +306,8 @@ const installBridgeScript = () => {
     payload: unknown,
     requestId?: string
   ) => {
+    if (!isActiveInstance()) return
+
     const safePayload = isObject(payload)
       ? (payload as Record<string, unknown>)
       : {}
@@ -305,7 +332,9 @@ const installBridgeScript = () => {
     "Koneksi extension terputus (context invalidated). Refresh halaman ini lalu coba lagi."
 
   const dispatchBridgeRequest = async (data: Record<string, unknown>) => {
-    const requestId = buildRequestId()
+    if (!isActiveInstance()) return
+
+    const requestId = String(data[REQUEST_ID_FIELD] || "").trim() || buildRequestId()
 
     const runId = normalizeRunId(data.run_id || data.runId)
     const workerModeRequested = Boolean(
@@ -486,6 +515,10 @@ const installBridgeScript = () => {
   }
 
   const handleMessage = (event: MessageEvent) => {
+    if (!isActiveInstance()) {
+      return
+    }
+
     if (event.source !== window || !event.data) {
       return
     }
@@ -501,6 +534,10 @@ const installBridgeScript = () => {
   }
 
   chrome.runtime.onMessage.addListener((message) => {
+    if (!isActiveInstance()) {
+      return
+    }
+
     if (!message || message.type !== "POWERMAXX_BRIDGE_EVENT") return
     postWorkerEvent(message.event || "", message.payload || "")
   })
