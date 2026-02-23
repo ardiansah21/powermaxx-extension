@@ -324,7 +324,8 @@ const installBridgeScript = () => {
   const isLikelyMatchingExternalResponse = (
     value: unknown,
     expectedMode: "single" | "bulk",
-    expectedRunId: string
+    expectedRunId: string,
+    expectedRequestId: string
   ) => {
     const payload = toRecord(value)
     if (!payload) return false
@@ -334,19 +335,37 @@ const installBridgeScript = () => {
     const mode = String(payload.mode || "").trim().toLowerCase()
     if (mode && mode !== expectedMode) return false
 
+    const responseRequestId = String(payload[REQUEST_ID_FIELD] || "").trim()
+    if (
+      expectedRequestId &&
+      responseRequestId &&
+      responseRequestId !== expectedRequestId
+    ) {
+      return false
+    }
+
     if (expectedRunId) {
       const responseRunId = normalizeRunId(payload.run_id || payload.runId)
-      if (responseRunId && responseRunId !== expectedRunId) {
+      if (!responseRunId || responseRunId !== expectedRunId) {
         return false
       }
     }
 
-    return true
+    if (expectedRequestId && responseRequestId === expectedRequestId) {
+      return true
+    }
+
+    if (expectedRunId) {
+      return true
+    }
+
+    return false
   }
 
   const waitForExternalBridgeResponse = (
     expectedMode: "single" | "bulk",
-    expectedRunId: string
+    expectedRunId: string,
+    expectedRequestId: string
   ) => {
     const now = Date.now()
     const hasRecentExternal =
@@ -375,7 +394,8 @@ const installBridgeScript = () => {
           !isLikelyMatchingExternalResponse(
             event.data,
             expectedMode,
-            expectedRunId
+            expectedRunId,
+            expectedRequestId
           )
         ) {
           return
@@ -500,7 +520,8 @@ const installBridgeScript = () => {
 
     const handledExternally = await waitForExternalBridgeResponse(
       responseMode,
-      runId
+      runId,
+      requestId
     )
 
     if (handledExternally) {

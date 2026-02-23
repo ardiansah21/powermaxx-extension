@@ -23,6 +23,7 @@
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.
 - Bridge injeksi menandai satu instance aktif per tab lewat atribut DOM `data-powermaxx-bridge-instance`; instance lama (stale) akan ignore request dan worker event agar tidak muncul respons ganda setelah extension reload.
 - Jika ada response bridge eksternal (legacy) yang terdeteksi dalam grace window, handler bridge extension baru membatalkan eksekusi lokal request tersebut untuk menekan duplicate side effects.
+- Guard deteksi response bridge eksternal kini mensyaratkan korelasi `run_id` atau `__pmx_request_id`; response eksternal tanpa korelasi tidak lagi membatalkan request lokal agar mengurangi kasus bridge terlihat "diam".
 - Worker event dari background tidak langsung dipost ke page saat request aktif; event dibuffer dulu dan hanya dilepas untuk `run_id` yang sesuai setelah response runtime terkirim.
 - Bridge menerima varian payload run ID (`run_id`, `runId`, `run_uuid`, `runUuid`) dan akan mencoba inferensi dari teks notifikasi DOM saat run ID tidak dikirim oleh frontend Laravel build lama.
 - Worker mode kini mengirim payload canonical yang lebih lengkap (`run_id`, `runId`, `worker_id`, `workerId`, `tab_id`, `tabId`, `extension_version`, `extensionVersion`, `action`, `mode`) dan melakukan retry claim awal singkat untuk menghindari race saat run baru dibuat.
