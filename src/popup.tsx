@@ -38,7 +38,8 @@ const pageStyle: React.CSSProperties = {
   padding: SPACE.md,
   color: "#0f172a",
   background: "#f8fafc",
-  fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+  fontFamily:
+    "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
   lineHeight: 1.35
 }
 
@@ -77,8 +78,8 @@ const headerActionsStyle: React.CSSProperties = {
 }
 
 const iconButtonStyle: React.CSSProperties = {
-  width: 30,
-  height: 30,
+  width: 34,
+  height: 34,
   border: "1px solid #94a3b8",
   borderRadius: 8,
   background: "#ffffff",
@@ -91,15 +92,20 @@ const iconButtonStyle: React.CSSProperties = {
 
 const toolsMenuStyle: React.CSSProperties = {
   position: "absolute",
-  top: 36,
+  top: 40,
   right: 0,
   zIndex: 10,
-  width: 214,
+  width: 220,
   border: "1px solid #cbd5e1",
   borderRadius: 10,
   padding: SPACE.sm,
   background: "#ffffff",
   boxShadow: "0 6px 20px rgba(15, 23, 42, 0.12)"
+}
+
+const toolsMenuListStyle: React.CSSProperties = {
+  display: "grid",
+  gap: SPACE.sm
 }
 
 const menuItemStyle: React.CSSProperties = {
@@ -110,10 +116,26 @@ const menuItemStyle: React.CSSProperties = {
 }
 
 const statusToneStyle: Record<StatusTone, React.CSSProperties> = {
-  neutral: { border: "1px solid #cbd5e1", background: "#f8fafc", color: "#334155" },
-  success: { border: "1px solid #86efac", background: "#f0fdf4", color: "#166534" },
-  warning: { border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e" },
-  error: { border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b" }
+  neutral: {
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#334155"
+  },
+  success: {
+    border: "1px solid #86efac",
+    background: "#f0fdf4",
+    color: "#166534"
+  },
+  warning: {
+    border: "1px solid #fde68a",
+    background: "#fffbeb",
+    color: "#92400e"
+  },
+  error: {
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#991b1b"
+  }
 }
 
 const statusStyle = (tone: StatusTone): React.CSSProperties => ({
@@ -167,7 +189,8 @@ const actionStackStyle: React.CSSProperties = {
 
 const fullButtonStyle: React.CSSProperties = {
   width: "100%",
-  boxSizing: "border-box"
+  boxSizing: "border-box",
+  minHeight: 38
 }
 
 const buttonStyle = (
@@ -219,7 +242,11 @@ function PopupPage() {
     setEmail(settings.auth.email || "")
     setLoggedIn(active)
     setShowToolsMenu(false)
-    return { active, email: settings.auth.email || "", baseUrl: settings.auth.baseUrl || "" }
+    return {
+      active,
+      email: settings.auth.email || "",
+      baseUrl: settings.auth.baseUrl || ""
+    }
   }
 
   useEffect(() => {
@@ -541,10 +568,42 @@ function PopupPage() {
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
                 aria-hidden="true">
-                <rect x="4" y="4" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
-                <rect x="14" y="4" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
-                <rect x="4" y="14" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
-                <rect x="14" y="14" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+                <rect
+                  x="4"
+                  y="4"
+                  width="6"
+                  height="6"
+                  rx="1.2"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <rect
+                  x="14"
+                  y="4"
+                  width="6"
+                  height="6"
+                  rx="1.2"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <rect
+                  x="4"
+                  y="14"
+                  width="6"
+                  height="6"
+                  rx="1.2"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <rect
+                  x="14"
+                  y="14"
+                  width="6"
+                  height="6"
+                  rx="1.2"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
               </svg>
             </button>
           </div>
@@ -552,106 +611,17 @@ function PopupPage() {
 
         {showToolsMenu && (
           <div style={toolsMenuStyle}>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", false),
-                ...fullButtonStyle
-              }}
-              onClick={() => {
-                setShowToolsMenu(false)
-                void openViewer()
-              }}>
-              <span style={menuItemStyle}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true">
-                  <path
-                    d="M2.5 12C4.7 7.8 8.1 5.7 12 5.7C15.9 5.7 19.3 7.8 21.5 12C19.3 16.2 15.9 18.3 12 18.3C8.1 18.3 4.7 16.2 2.5 12Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-                </svg>
-                <span>Viewer</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", false),
-                ...fullButtonStyle,
-                marginTop: SPACE.sm
-              }}
-              onClick={() => {
-                setShowToolsMenu(false)
-                void openBulkOperator()
-              }}>
-              <span style={menuItemStyle}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true">
-                  <rect x="3.5" y="4" width="17" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                  <path d="M7 9H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M7 13H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M7 17H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-                <span>Bulk Operator</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", false),
-                ...fullButtonStyle,
-                marginTop: SPACE.sm
-              }}
-              onClick={() => {
-                setShowToolsMenu(false)
-                chrome.runtime.openOptionsPage()
-              }}>
-              <span style={menuItemStyle}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true">
-                  <path
-                    d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  />
-                  <path
-                    d="M19.4 13.5C19.46 13 19.5 12.5 19.5 12C19.5 11.5 19.46 11 19.4 10.5L21.1 9.2L19.4 6.3L17.3 7.1C16.5 6.5 15.6 6 14.6 5.7L14.3 3.5H10.9L10.6 5.7C9.6 6 8.7 6.5 7.9 7.1L5.8 6.3L4.1 9.2L5.8 10.5C5.74 11 5.7 11.5 5.7 12C5.7 12.5 5.74 13 5.8 13.5L4.1 14.8L5.8 17.7L7.9 16.9C8.7 17.5 9.6 18 10.6 18.3L10.9 20.5H14.3L14.6 18.3C15.6 18 16.5 17.5 17.3 16.9L19.4 17.7L21.1 14.8L19.4 13.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span>Pengaturan</span>
-              </span>
-            </button>
-            {loggedIn && (
+            <div style={toolsMenuListStyle}>
               <button
                 type="button"
                 style={{
-                  ...buttonStyle("neutral", busyLogin || busyAction),
-                  ...fullButtonStyle,
-                  marginTop: SPACE.sm
+                  ...buttonStyle("neutral", false),
+                  ...fullButtonStyle
                 }}
-                disabled={busyLogin || busyAction}
-                onClick={handleLogout}>
+                onClick={() => {
+                  setShowToolsMenu(false)
+                  void openViewer()
+                }}>
                 <span style={menuItemStyle}>
                   <svg
                     width="14"
@@ -660,14 +630,147 @@ function PopupPage() {
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                     aria-hidden="true">
-                    <path d="M10 4H5.5C4.7 4 4 4.7 4 5.5V18.5C4 19.3 4.7 20 5.5 20H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                    <path d="M14 8L19 12L14 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M9 12H19" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    <path
+                      d="M2.5 12C4.7 7.8 8.1 5.7 12 5.7C15.9 5.7 19.3 7.8 21.5 12C19.3 16.2 15.9 18.3 12 18.3C8.1 18.3 4.7 16.2 2.5 12Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="3"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
                   </svg>
-                  <span>Logout</span>
+                  <span>Viewer</span>
                 </span>
               </button>
-            )}
+              <button
+                type="button"
+                style={{
+                  ...buttonStyle("neutral", false),
+                  ...fullButtonStyle
+                }}
+                onClick={() => {
+                  setShowToolsMenu(false)
+                  void openBulkOperator()
+                }}>
+                <span style={menuItemStyle}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <rect
+                      x="3.5"
+                      y="4"
+                      width="17"
+                      height="16"
+                      rx="2"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M7 9H17"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M7 13H17"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M7 17H13"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <span>Bulk Operator</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                style={{
+                  ...buttonStyle("neutral", false),
+                  ...fullButtonStyle
+                }}
+                onClick={() => {
+                  setShowToolsMenu(false)
+                  chrome.runtime.openOptionsPage()
+                }}>
+                <span style={menuItemStyle}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <path
+                      d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5Z"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
+                    <path
+                      d="M19.4 13.5C19.46 13 19.5 12.5 19.5 12C19.5 11.5 19.46 11 19.4 10.5L21.1 9.2L19.4 6.3L17.3 7.1C16.5 6.5 15.6 6 14.6 5.7L14.3 3.5H10.9L10.6 5.7C9.6 6 8.7 6.5 7.9 7.1L5.8 6.3L4.1 9.2L5.8 10.5C5.74 11 5.7 11.5 5.7 12C5.7 12.5 5.74 13 5.8 13.5L4.1 14.8L5.8 17.7L7.9 16.9C8.7 17.5 9.6 18 10.6 18.3L10.9 20.5H14.3L14.6 18.3C15.6 18 16.5 17.5 17.3 16.9L19.4 17.7L21.1 14.8L19.4 13.5Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span>Pengaturan</span>
+                </span>
+              </button>
+              {loggedIn && (
+                <button
+                  type="button"
+                  style={{
+                    ...buttonStyle("neutral", busyLogin || busyAction),
+                    ...fullButtonStyle
+                  }}
+                  disabled={busyLogin || busyAction}
+                  onClick={handleLogout}>
+                  <span style={menuItemStyle}>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true">
+                      <path
+                        d="M10 4H5.5C4.7 4 4 4.7 4 5.5V18.5C4 19.3 4.7 20 5.5 20H10"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M14 8L19 12L14 16"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M9 12H19"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span>Logout</span>
+                  </span>
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -714,8 +817,10 @@ function PopupPage() {
                 type="button"
                 style={buttonStyle("neutral")}
                 onClick={() => setShowPassword((value) => !value)}
-                aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}>
-                {showPassword ? "Hide" : "Show"}
+                aria-label={
+                  showPassword ? "Sembunyikan password" : "Tampilkan password"
+                }>
+                {showPassword ? "Tutup" : "Lihat"}
               </button>
             </div>
 

@@ -25,3 +25,4 @@
 - [2026-02-23] Mode bridge `single` kini kompatibel dengan payload tanpa `run_id` melalui fallback headless-bulk + inferensi `run_id` dari notifikasi DOM halaman Laravel jika tersedia.
 - [2026-02-23] Worker `claim-next` ditambah payload canonical (`run_id`/`worker_id` + alias camelCase) dan retry claim awal singkat untuk mengurangi race condition setelah run dibuat.
 - [2026-02-23] Worker dan bulk headless sekarang memiliki stall watchdog (`run_stalled` / `run_resumed`) dengan payload order aktif agar diagnosis run macet lebih cepat tanpa mengubah kontrak bridge legacy.
+- [2026-02-23] Worker API payload canonical diperluas dengan `tab_id` dan `extension_version` (plus alias camelCase) pada flow `claim-next`, `heartbeat`, `report`, dan `complete` untuk observability lintas legacy + Plasmo.

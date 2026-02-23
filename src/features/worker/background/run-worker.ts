@@ -1,4 +1,3 @@
-import { logger } from "~src/core/logging/logger"
 import {
   buildAutomationActionHint,
   classifyAutomationErrorCode,
@@ -7,7 +6,7 @@ import {
   toAutomationErrorCode,
   toAutomationStatus
 } from "~src/core/errors/automation-error"
-import { normalizeIdType, normalizeMarketplace, toActionMode } from "~src/core/messages/guards"
+import { logger } from "~src/core/logging/logger"
 import type {
   BridgeAction,
   BridgeApiPaths,
@@ -15,6 +14,11 @@ import type {
   RuntimeRunWorkerRequest,
   RuntimeSingleRequest
 } from "~src/core/messages/contracts"
+import {
+  normalizeIdType,
+  normalizeMarketplace,
+  toActionMode
+} from "~src/core/messages/guards"
 import type { PowermaxxSettings } from "~src/core/settings/schema"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import { executeFetchSendByOrder } from "~src/features/fetch-send/background/run-fetch-send"
@@ -67,12 +71,16 @@ const normalizeWorkerId = (value: unknown, senderTabId?: number | null) => {
 }
 
 const normalizeWorkerMode = (value: unknown): "single" | "bulk" => {
-  const raw = String(value || "").trim().toLowerCase()
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
   return raw === "single" ? "single" : "bulk"
 }
 
 const normalizeWorkerAction = (value: unknown): BridgeAction => {
-  const raw = String(value || "").trim().toLowerCase()
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase()
   if (raw === "update_order") return "update_order"
   if (raw === "update_income") return "update_income"
   return "update_both"
@@ -83,7 +91,9 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const getLocalStorage = () => chrome.storage?.local
 
-const loadWorkerReportedRegistry = async (): Promise<Record<string, number>> => {
+const loadWorkerReportedRegistry = async (): Promise<
+  Record<string, number>
+> => {
   const storage = getLocalStorage()
   if (!storage) return {}
 
@@ -120,7 +130,9 @@ const pruneWorkerReportedRegistry = (registry: Record<string, number>) => {
 
 const loadPersistedReportedOrders = async (runId: string) => {
   const prefix = `${runId}:`
-  const registry = pruneWorkerReportedRegistry(await loadWorkerReportedRegistry())
+  const registry = pruneWorkerReportedRegistry(
+    await loadWorkerReportedRegistry()
+  )
   await saveWorkerReportedRegistry(registry)
   return new Set(
     Object.keys(registry).filter((key) => String(key).startsWith(prefix))
@@ -129,7 +141,9 @@ const loadPersistedReportedOrders = async (runId: string) => {
 
 const markPersistedReportedOrder = async (dedupeKey: string) => {
   if (!dedupeKey) return
-  const current = pruneWorkerReportedRegistry(await loadWorkerReportedRegistry())
+  const current = pruneWorkerReportedRegistry(
+    await loadWorkerReportedRegistry()
+  )
   current[dedupeKey] = Date.now()
   await saveWorkerReportedRegistry(current)
 }
@@ -137,7 +151,8 @@ const markPersistedReportedOrder = async (dedupeKey: string) => {
 const fillPathTemplate = (
   template: string,
   params: Record<string, string | number>
-) => template.replace(/\{([^}]+)\}/g, (_match, key) => String(params[key] ?? ""))
+) =>
+  template.replace(/\{([^}]+)\}/g, (_match, key) => String(params[key] ?? ""))
 
 const buildWorkerUrl = (
   baseUrl: string,
@@ -163,6 +178,13 @@ interface FetchJsonResult {
   text: string
   json: Record<string, any> | null
   error?: string
+}
+
+const snippet = (value: unknown, max = 240) => {
+  const text = String(value || "").trim()
+  if (!text) return ""
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}...`
 }
 
 const fetchJsonWithTimeout = async (
@@ -216,6 +238,40 @@ const fetchJsonWithTimeout = async (
   }
 }
 
+const extractWorkerApiErrorDetail = (response: FetchJsonResult) => {
+  const payload = isObject(response.json) ? response.json : null
+  const code = String(payload?.code || "").trim()
+  const message = String(payload?.message || "").trim()
+  const hint = String(payload?.action_hint || payload?.actionHint || "").trim()
+  const networkError = snippet(response.error)
+  const rawSnippet = snippet(response.text)
+
+  return {
+    code,
+    message,
+    hint,
+    networkError,
+    rawSnippet
+  }
+}
+
+const formatWorkerApiError = (label: string, response: FetchJsonResult) => {
+  const detail = extractWorkerApiErrorDetail(response)
+  const parts = [
+    detail.code ? `[${detail.code}]` : "",
+    detail.message,
+    detail.hint,
+    detail.networkError,
+    !detail.message && !detail.networkError ? detail.rawSnippet : ""
+  ].filter(Boolean)
+
+  const suffix = parts.length
+    ? `: ${parts.join(" | ")}`
+    : ` (${response.statusText || "REQUEST_FAILED"})`
+
+  return `${label} ${response.status}${suffix}`
+}
+
 interface WorkerSession {
   key: string
   runId: string
@@ -252,6 +308,17 @@ interface WorkerSession {
     report_failed: number
   }
 }
+
+const buildWorkerCanonicalMeta = (session: WorkerSession) => ({
+  run_id: session.runId,
+  runId: session.runId,
+  worker_id: session.workerId,
+  workerId: session.workerId,
+  tab_id: session.sourceTabId || null,
+  tabId: session.sourceTabId || null,
+  extension_version: session.extensionVersion,
+  extensionVersion: session.extensionVersion
+})
 
 const buildWorkerStallPayload = (session: WorkerSession, idleMs: number) => {
   const activeOrder = session.progress.activeOrder
@@ -410,18 +477,25 @@ const normalizeClaimedOrder = (
   ).trim()
 
   const marketplace = normalizeMarketplace(
-    runOrder.marketplace || runOrder.marketplace_slug || runOrder.marketplace_name
+    runOrder.marketplace ||
+      runOrder.marketplace_slug ||
+      runOrder.marketplace_name
   )
 
   const idType =
-    normalizeIdType(runOrder.id_type || runOrder.identifier_type || runOrder.idType) ||
+    normalizeIdType(
+      runOrder.id_type || runOrder.identifier_type || runOrder.idType
+    ) ||
     (runOrder.mp_order_id !== undefined || runOrder.order_id !== undefined
       ? "order_id"
       : "order_sn")
 
   const action = normalizeWorkerAction(runOrder.action || fallbackAction)
 
-  if (!identifier || (marketplace !== "shopee" && marketplace !== "tiktok_shop")) {
+  if (
+    !identifier ||
+    (marketplace !== "shopee" && marketplace !== "tiktok_shop")
+  ) {
     return {
       hasOrder: false,
       runOrderId,
@@ -470,13 +544,19 @@ const normalizeOrderChanges = (value: unknown) => {
     .filter(Boolean)
 }
 
-const extractChangesFromFetchResult = (fetchResult: Record<string, unknown> | null) => {
+const extractChangesFromFetchResult = (
+  fetchResult: Record<string, unknown> | null
+) => {
   if (!isObject(fetchResult)) return []
 
   const changes = normalizeOrderChanges(fetchResult.changes)
   if (changes.length) return changes
 
-  const mergedChanges: Array<{ field: string; before: unknown; after: unknown }> = []
+  const mergedChanges: Array<{
+    field: string
+    before: unknown
+    after: unknown
+  }> = []
 
   const orderRawJson =
     (fetchResult.orderRawJson as Record<string, unknown> | null) ||
@@ -611,10 +691,7 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   })
 
   const claimPayload = {
-    run_id: session.runId,
-    runId: session.runId,
-    worker_id: session.workerId,
-    workerId: session.workerId,
+    ...buildWorkerCanonicalMeta(session),
     action: session.action,
     mode: session.mode
   }
@@ -632,10 +709,9 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   )
 
   if (!response.ok) {
-    const suffix = response.error ? ` (${response.error})` : ""
     return {
       ok: false,
-      error: `Claim next gagal ${response.status}${suffix}`,
+      error: formatWorkerApiError("Claim next gagal", response),
       claimed: null
     }
   }
@@ -657,6 +733,13 @@ const sendHeartbeat = async (
     runOrderId
   })
 
+  const heartbeatPayload = {
+    ...buildWorkerCanonicalMeta(session),
+    run_order_id: runOrderId,
+    runOrderId: runOrderId,
+    ...payload
+  }
+
   return fetchJsonWithTimeout(
     url,
     {
@@ -664,7 +747,7 @@ const sendHeartbeat = async (
       headers: {
         authorization: `Bearer ${session.token}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(heartbeatPayload)
     },
     session.requestTimeoutMs
   )
@@ -691,6 +774,13 @@ const reportRunOrder = async (
 
   let lastResponse: FetchJsonResult | null = null
 
+  const reportPayload = {
+    ...buildWorkerCanonicalMeta(session),
+    run_order_id: runOrderId,
+    runOrderId: runOrderId,
+    ...payload
+  }
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const response = await fetchJsonWithTimeout(
       url,
@@ -699,7 +789,7 @@ const reportRunOrder = async (
         headers: {
           authorization: `Bearer ${session.token}`
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(reportPayload)
       },
       session.requestTimeoutMs
     )
@@ -730,10 +820,12 @@ const reportRunOrder = async (
   }
 }
 
-const completeRunIfNeeded = async (session: WorkerSession) => {
+const completeRunIfNeeded = async (
+  session: WorkerSession
+): Promise<FetchJsonResult | { ok: true; status: number }> => {
   if (!session.completeOnFinish) {
     return {
-      ok: true,
+      ok: true as const,
       status: 0
     }
   }
@@ -750,6 +842,7 @@ const completeRunIfNeeded = async (session: WorkerSession) => {
         authorization: `Bearer ${session.token}`
       },
       body: JSON.stringify({
+        ...buildWorkerCanonicalMeta(session),
         stats: session.stats
       })
     },
@@ -815,13 +908,11 @@ const processClaimedRunOrder = async (
     const errorCode = result.ok
       ? null
       : classifyAutomationErrorCode(sanitizeErrorMessage(result.error))
-    const status = result.ok
-      ? "success"
-      : toAutomationStatus(errorCode)
-    const errorMessage = result.ok
+    const status = result.ok ? "success" : toAutomationStatus(errorCode)
+    const errorMessage = result.ok ? null : sanitizeErrorMessage(result.error)
+    const technicalError = result.ok
       ? null
-      : sanitizeErrorMessage(result.error)
-    const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
+      : sanitizeTechnicalError(result.error)
 
     const reportPayload = buildRunOrderReportPayload({
       session,
@@ -833,10 +924,16 @@ const processClaimedRunOrder = async (
       technicalError,
       durationMs,
       fetchResult:
-        (result.fetchResult as unknown as Record<string, unknown> | undefined) || null
+        (result.fetchResult as unknown as
+          | Record<string, unknown>
+          | undefined) || null
     })
 
-    const reportResponse = await reportRunOrder(session, runOrderId, reportPayload)
+    const reportResponse = await reportRunOrder(
+      session,
+      runOrderId,
+      reportPayload
+    )
 
     if (!reportResponse.ok) {
       session.stats.report_failed += 1
@@ -862,12 +959,16 @@ const processClaimedRunOrder = async (
       technicalError,
       actionHint: result.ok ? null : buildAutomationActionHint(errorCode),
       fetchResult:
-        (result.fetchResult as unknown as Record<string, unknown> | undefined) || null,
+        (result.fetchResult as unknown as
+          | Record<string, unknown>
+          | undefined) || null,
       durationMs
     }
   } catch (error) {
     const durationMs = Date.now() - startedAt
-    const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+    const errorMessage = sanitizeErrorMessage(
+      (error as Error)?.message || error
+    )
     const errorCode = classifyAutomationErrorCode(errorMessage)
     const status = toAutomationStatus(errorCode)
     const technicalError = sanitizeTechnicalError(
@@ -923,7 +1024,10 @@ const processClaimedRunOrder = async (
   }
 }
 
-const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings) => {
+const runWorkerLoop = async (
+  session: WorkerSession,
+  settings: PowermaxxSettings
+) => {
   await sendBridgeWorkerEvent(session.sourceTabId, "run_started", {
     run_id: session.runId,
     worker_id: session.workerId,
@@ -1026,8 +1130,14 @@ const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings
 
     const completion = await completeRunIfNeeded(session)
     if (!completion.ok) {
+      const completionDetail =
+        "statusText" in completion
+          ? extractWorkerApiErrorDetail(completion)
+          : { code: "", message: "" }
       workerLog(session, "warn", "run_complete_failed", {
-        status: completion.status
+        status: completion.status,
+        error_code: completionDetail.code || null,
+        error_message: completionDetail.message || null
       })
     }
 
@@ -1057,7 +1167,10 @@ export const startRunWorker = async (args: {
   const token = settings.auth.token || ""
   const baseUrl = settings.auth.baseUrl || ""
   const runId = normalizeWorkerRunId(message.runId || message.run_id)
-  const workerId = normalizeWorkerId(message.workerId || message.worker_id, senderTabId)
+  const workerId = normalizeWorkerId(
+    message.workerId || message.worker_id,
+    senderTabId
+  )
 
   if (!runId) {
     return {
@@ -1094,7 +1207,10 @@ export const startRunWorker = async (args: {
 
   const workerKey = `${runId}:${workerId}`
 
-  if (activeRunWorkerByKey.has(workerKey) || activeRunWorkerByRunId.has(runId)) {
+  if (
+    activeRunWorkerByKey.has(workerKey) ||
+    activeRunWorkerByRunId.has(runId)
+  ) {
     return {
       ok: false,
       error: "Worker untuk run ini masih berjalan.",
@@ -1188,7 +1304,9 @@ export const startRunWorker = async (args: {
   setTimeout(() => {
     runWorkerLoop(session, settings)
       .catch(async (error) => {
-        const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+        const errorMessage = sanitizeErrorMessage(
+          (error as Error)?.message || error
+        )
         const errorCode = classifyAutomationErrorCode(errorMessage)
 
         logger.error("Worker run failed", {

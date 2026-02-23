@@ -1,5 +1,4 @@
 import { logger } from "~src/core/logging/logger"
-import { normalizeBridgeAction } from "~src/core/messages/guards"
 import type {
   ActionMode,
   RuntimeBulkRequest,
@@ -7,32 +6,36 @@ import type {
   RuntimeRunWorkerRequest,
   RuntimeSingleRequest
 } from "~src/core/messages/contracts"
-import { executeAwbOnActiveMarketplaceTab } from "~src/features/awb/background/run-awb"
-import {
-  bindMarketplaceTabTrackers,
-  executeFetchOnlyOnActiveMarketplaceTab,
-  executeFetchSendOnActiveMarketplaceTab,
-  resolveMarketplaceTab
-} from "~src/features/fetch-send/background/run-fetch-send"
-import { bindBridgeAutoInjection, ensureBridgeForBaseUrls } from "~src/features/bridge/background/bridge-register"
-import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
+import { normalizeBridgeAction } from "~src/core/messages/guards"
+import { normalizeBaseUrl, SETTINGS_KEY } from "~src/core/settings/schema"
 import {
   clearAuthSession,
   loadSettings,
   updateAuthSession
 } from "~src/core/settings/storage"
-import { SETTINGS_KEY, normalizeBaseUrl } from "~src/core/settings/schema"
+import { executeAwbOnActiveMarketplaceTab } from "~src/features/awb/background/run-awb"
 import {
-  loadViewerPayload,
-  saveViewerPayload
-} from "~src/features/viewer/shared/storage"
-import { startRunWorker } from "~src/features/worker/background/run-worker"
+  bindBridgeAutoInjection,
+  ensureBridgeForBaseUrls
+} from "~src/features/bridge/background/bridge-register"
+import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
   formatExportFailureMessage,
   sendExport
 } from "~src/features/fetch-send/background/export-client"
+import {
+  bindMarketplaceTabTrackers,
+  executeFetchOnlyOnActiveMarketplaceTab,
+  executeFetchSendOnActiveMarketplaceTab,
+  resolveMarketplaceTab
+} from "~src/features/fetch-send/background/run-fetch-send"
+import {
+  loadViewerPayload,
+  saveViewerPayload
+} from "~src/features/viewer/shared/storage"
+import { startRunWorker } from "~src/features/worker/background/run-worker"
 
 const syncBridgeFromSettings = async () => {
   const settings = await loadSettings()
@@ -342,7 +345,10 @@ const handlePopupFetchSend = async (message: RuntimeRequestMessage) => {
     settings
   )
 
-  if (result.fetchResult && (result.marketplace === "shopee" || result.marketplace === "tiktok_shop")) {
+  if (
+    result.fetchResult &&
+    (result.marketplace === "shopee" || result.marketplace === "tiktok_shop")
+  ) {
     void storeViewerFromFetchResult({
       marketplace: result.marketplace,
       actionMode: message.actionMode,
@@ -372,7 +378,10 @@ const handlePopupFetchOnly = async (message: RuntimeRequestMessage) => {
 
   const settings = await loadSettings()
   const actionMode: ActionMode = message.actionMode || "fetch_send"
-  const result = await executeFetchOnlyOnActiveMarketplaceTab(actionMode, settings)
+  const result = await executeFetchOnlyOnActiveMarketplaceTab(
+    actionMode,
+    settings
+  )
 
   if (
     result.fetchResult &&
@@ -440,7 +449,11 @@ const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
   )
   const awbResult = await executeAwbOnActiveMarketplaceTab(settings)
 
-  if (fetchResult.fetchResult && (fetchResult.marketplace === "shopee" || fetchResult.marketplace === "tiktok_shop")) {
+  if (
+    fetchResult.fetchResult &&
+    (fetchResult.marketplace === "shopee" ||
+      fetchResult.marketplace === "tiktok_shop")
+  ) {
     void storeViewerFromFetchResult({
       marketplace: fetchResult.marketplace,
       actionMode: "fetch_send",
@@ -449,7 +462,10 @@ const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
     })
   }
 
-  const errors = [fetchResult.ok ? "" : fetchResult.error, awbResult.ok ? "" : awbResult.error]
+  const errors = [
+    fetchResult.ok ? "" : fetchResult.error,
+    awbResult.ok ? "" : awbResult.error
+  ]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
 
@@ -497,7 +513,8 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
   if (!viewerPayload) {
     return {
       ok: false,
-      error: "Belum ada data viewer. Jalankan Ambil Data atau Fetch + Send dulu."
+      error:
+        "Belum ada data viewer. Jalankan Fetch + Send atau buka Viewer untuk auto-fetch."
     }
   }
 
@@ -514,7 +531,8 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
   if (!viewerPayload.orderRawJson && !viewerPayload.incomeRawJson) {
     return {
       ok: false,
-      error: "Payload viewer kosong. Jalankan Ambil Data dulu."
+      error:
+        "Payload viewer kosong. Klik Refresh di Viewer untuk auto-fetch dari tab marketplace aktif."
     }
   }
 
@@ -541,9 +559,7 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
 
   return {
     ok: Boolean(exportResult.ok),
-    error: exportResult.ok
-      ? ""
-      : formatExportFailureMessage(exportResult),
+    error: exportResult.ok ? "" : formatExportFailureMessage(exportResult),
     mode: "single",
     count: 1,
     running: false,
