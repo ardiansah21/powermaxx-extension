@@ -1000,41 +1000,44 @@ export const startRunWorker = async (args: {
   activeRunWorkerByKey.set(workerKey, session)
   activeRunWorkerByRunId.set(runId, workerKey)
 
-  runWorkerLoop(session, settings)
-    .catch(async (error) => {
-      const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
-      const errorCode = classifyAutomationErrorCode(errorMessage)
+  // Delay worker start to ensure runtime response is posted first.
+  setTimeout(() => {
+    runWorkerLoop(session, settings)
+      .catch(async (error) => {
+        const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+        const errorCode = classifyAutomationErrorCode(errorMessage)
 
-      logger.error("Worker run failed", {
-        feature: "worker",
-        domain: "run-loop",
-        step: "catch",
-        runId: session.runId,
-        workerId: session.workerId,
-        error: errorMessage
-      })
+        logger.error("Worker run failed", {
+          feature: "worker",
+          domain: "run-loop",
+          step: "catch",
+          runId: session.runId,
+          workerId: session.workerId,
+          error: errorMessage
+        })
 
-      workerLog(session, "error", "run_failed", {
-        error_code: errorCode,
-        error_message: errorMessage
-      })
+        workerLog(session, "error", "run_failed", {
+          error_code: errorCode,
+          error_message: errorMessage
+        })
 
-      await sendBridgeWorkerEvent(session.sourceTabId, "run_failed", {
-        run_id: session.runId,
-        worker_id: session.workerId,
-        error_code: errorCode,
-        error_message: errorMessage,
-        technical_error: sanitizeTechnicalError(
-          (error as Error)?.stack || (error as Error)?.message || error
-        ),
-        action_hint: buildAutomationActionHint(errorCode),
-        stats: session.stats
+        await sendBridgeWorkerEvent(session.sourceTabId, "run_failed", {
+          run_id: session.runId,
+          worker_id: session.workerId,
+          error_code: errorCode,
+          error_message: errorMessage,
+          technical_error: sanitizeTechnicalError(
+            (error as Error)?.stack || (error as Error)?.message || error
+          ),
+          action_hint: buildAutomationActionHint(errorCode),
+          stats: session.stats
+        })
       })
-    })
-    .finally(() => {
-      activeRunWorkerByKey.delete(workerKey)
-      activeRunWorkerByRunId.delete(runId)
-    })
+      .finally(() => {
+        activeRunWorkerByKey.delete(workerKey)
+        activeRunWorkerByRunId.delete(runId)
+      })
+  }, 0)
 
   return {
     ok: true,

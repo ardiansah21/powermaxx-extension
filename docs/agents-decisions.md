@@ -21,3 +21,5 @@
 - [2026-02-23] (Superseded) Untuk menjaga parity flow popup legacy, aksi dipisah kembali: `Ambil Data` (fetch-only ke viewer) dan `Kirim Data` (export payload viewer terakhir) di `Aksi Lanjutan`.
 - [2026-02-23] Penyederhanaan UX lanjutan: aksi `Ambil Data` dan `Kirim Data` dihapus dari popup; `Bulk Operator` + `Viewer` dipindah ke icon header; Viewer melakukan auto-fetch sendiri saat payload kosong.
 - [2026-02-23] Penyederhanaan UX final popup: tombol `Update Order`/`Update Income` dihapus (diwakili flow `Fetch + Send`), dan `Bulk`, `Viewer`, `Pengaturan`, serta `Logout` disatukan ke satu group menu header tanpa menampilkan info sesi.
+- [2026-02-23] Bridge worker event digating per `run_id` dan dibuffer sampai response runtime terkirim agar event progress tidak menimpa final response pada listener web legacy.
+- [2026-02-23] Mode bridge `single` kini kompatibel dengan payload tanpa `run_id` melalui fallback headless-bulk + inferensi `run_id` dari notifikasi DOM halaman Laravel jika tersedia.

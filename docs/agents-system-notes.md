@@ -23,6 +23,9 @@
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.
 - Bridge injeksi menandai satu instance aktif per tab lewat atribut DOM `data-powermaxx-bridge-instance`; instance lama (stale) akan ignore request dan worker event agar tidak muncul respons ganda setelah extension reload.
 - Jika ada response bridge eksternal (legacy) yang terdeteksi dalam grace window, handler bridge extension baru membatalkan eksekusi lokal request tersebut untuk menekan duplicate side effects.
+- Worker event dari background tidak langsung dipost ke page saat request aktif; event dibuffer dulu dan hanya dilepas untuk `run_id` yang sesuai setelah response runtime terkirim.
+- Bridge menerima varian payload run ID (`run_id`, `runId`, `run_uuid`, `runUuid`) dan akan mencoba inferensi dari teks notifikasi DOM saat run ID tidak dikirim oleh frontend Laravel build lama.
+- Mode `single` tanpa `run_id` tidak lagi hard-fail; background memakai fallback eksekusi headless untuk menjaga kompatibilitas payload lama.
 - `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
 - Bulk headless sekarang mendukung fallback auto-marketplace: saat order berlabel `auto`/kosong, runner mencoba marketplace default lalu otomatis mencoba marketplace alternatif.

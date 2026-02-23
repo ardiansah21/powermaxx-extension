@@ -168,7 +168,7 @@ export const runBulkHeadless = async (args: {
 
   activeBulkSessionBySource.set(sourceKey, { runId, workerId })
 
-  ;(async () => {
+  const runSession = async () => {
     const stats = {
       claimed: orders.length,
       processed: 0,
@@ -273,29 +273,34 @@ export const runBulkHeadless = async (args: {
     })
 
     activeBulkSessionBySource.delete(sourceKey)
-  })().catch((error) => {
-    logger.error("Bulk headless worker crashed", {
-      feature: "bulk",
-      domain: "worker",
-      step: "run",
-      runId,
-      workerId,
-      error: String((error as Error)?.message || error)
-    })
+  }
 
-    sendBridgeWorkerEvent(senderTabId, "run_failed", {
-      run_id: runId,
-      worker_id: workerId,
-      error_code: "RUN_FAILED",
-      error_message: String((error as Error)?.message || error),
-      technical_error: sanitizeTechnicalError(
-        (error as Error)?.stack || (error as Error)?.message || error
-      ),
-      action_hint: buildAutomationActionHint("EXTENSION_RUNTIME")
-    })
+  // Delay worker start to ensure runtime response is posted first.
+  setTimeout(() => {
+    void runSession().catch((error) => {
+      logger.error("Bulk headless worker crashed", {
+        feature: "bulk",
+        domain: "worker",
+        step: "run",
+        runId,
+        workerId,
+        error: String((error as Error)?.message || error)
+      })
 
-    activeBulkSessionBySource.delete(sourceKey)
-  })
+      sendBridgeWorkerEvent(senderTabId, "run_failed", {
+        run_id: runId,
+        worker_id: workerId,
+        error_code: "RUN_FAILED",
+        error_message: String((error as Error)?.message || error),
+        technical_error: sanitizeTechnicalError(
+          (error as Error)?.stack || (error as Error)?.message || error
+        ),
+        action_hint: buildAutomationActionHint("EXTENSION_RUNTIME")
+      })
+
+      activeBulkSessionBySource.delete(sourceKey)
+    })
+  }, 0)
 
   return {
     ok: true,

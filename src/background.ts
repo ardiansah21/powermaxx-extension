@@ -556,19 +556,36 @@ const handleSingle = async (
   message: RuntimeSingleRequest,
   senderTabId?: number | null
 ) => {
-  if (!message.runId && !message.run_id) {
-    return {
-      ok: false,
-      error: "Mode single bridge wajib menyertakan run_id.",
-      running: false,
-      runId: "",
-      workerId: "",
-      mode: "single"
-    }
-  }
-
   const settings = await loadSettings()
   const action = normalizeBridgeAction(message.action) || "update_both"
+  const runId = String(message.runId || message.run_id || "").trim()
+
+  if (!runId) {
+    logger.warn("Bridge single fallback without run_id", {
+      feature: "bridge",
+      domain: "single",
+      step: "fallback-bulk",
+      senderTabId: senderTabId || null,
+      orders: Array.isArray(message.orders) ? message.orders.length : 0
+    })
+
+    const fallback = await runBulkHeadless({
+      message: {
+        type: "POWERMAXX_BULK",
+        action,
+        mode: "bulk",
+        orders: Array.isArray(message.orders) ? message.orders : [],
+        sourceUrl: message.sourceUrl
+      },
+      senderTabId,
+      settings
+    })
+
+    return {
+      ...fallback,
+      mode: "single" as const
+    }
+  }
 
   return startRunWorker({
     message: {

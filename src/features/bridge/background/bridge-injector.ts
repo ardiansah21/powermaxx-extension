@@ -17,6 +17,9 @@ const installBridgeScript = () => {
   const INITIAL_EXTERNAL_GRACE_MS = 450
   const KNOWN_EXTERNAL_GRACE_MS = 180
   const EXTERNAL_RECENT_WINDOW_MS = 30_000
+  const WORKER_EVENT_RUN_TTL_MS = 30 * 60 * 1000
+  const RUN_ID_REGEX =
+    /\brun\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi
   const ALLOWED_ACTIONS = new Set(["update_order", "update_income", "update_both"])
   const ALLOWED_MODES = new Set(["single", "bulk"])
   const instanceId = `${BRIDGE_OWNER}:${Date.now()}:${Math.random()
@@ -25,6 +28,16 @@ const installBridgeScript = () => {
   let requestSequence = 0
   let externalBridgeLastSeenAt = 0
   let bridgeQueue = Promise.resolve()
+  const workerEventAllowList = new Map<string, number>()
+  let activeRequestState: {
+    requestId: string
+    allowWorkerEvents: boolean
+    expectedRunId: string
+    bufferedEvents: Array<{
+      eventName: string
+      payload: Record<string, unknown>
+    }>
+  } | null = null
 
   const setAsActiveInstance = () => {
     try {
@@ -155,6 +168,82 @@ const installBridgeScript = () => {
 
   const isObject = (value: unknown) =>
     Boolean(value) && typeof value === "object" && !Array.isArray(value)
+
+  const inferRunIdFromDom = () => {
+    const scanTargets: string[] = []
+    const announceNodes = document.querySelectorAll(
+      '[role="status"], [role="alert"], [aria-live]'
+    )
+
+    announceNodes.forEach((node) => {
+      const text = String((node as HTMLElement)?.innerText || "").trim()
+      if (text) scanTargets.push(text)
+    })
+
+    const bodyText = String(document.body?.innerText || "").trim()
+    if (bodyText) {
+      scanTargets.push(bodyText)
+    }
+
+    const runIds: string[] = []
+    scanTargets.forEach((text) => {
+      const matcher = new RegExp(RUN_ID_REGEX.source, "gi")
+      let match: RegExpExecArray | null = null
+      while ((match = matcher.exec(text))) {
+        const runId = normalizeRunId(match?.[1])
+        if (runId) {
+          runIds.push(runId)
+        }
+      }
+    })
+
+    return runIds.length ? runIds[runIds.length - 1] : ""
+  }
+
+  const pruneWorkerEventAllowList = () => {
+    const now = Date.now()
+    Array.from(workerEventAllowList.entries()).forEach(([runId, expiresAt]) => {
+      if (!runId || !Number.isFinite(expiresAt) || expiresAt <= now) {
+        workerEventAllowList.delete(runId)
+      }
+    })
+  }
+
+  const markWorkerEventRunAllowed = (runId: string) => {
+    const normalized = normalizeRunId(runId)
+    if (!normalized) return
+    pruneWorkerEventAllowList()
+    workerEventAllowList.set(normalized, Date.now() + WORKER_EVENT_RUN_TTL_MS)
+  }
+
+  const getWorkerRunId = (payload: unknown) => {
+    if (!isObject(payload)) return ""
+    const record = payload as Record<string, unknown>
+    return normalizeRunId(record.run_id || record.runId)
+  }
+
+  const isAllowedBufferedWorkerEvent = (
+    expectedRunId: string,
+    payload: Record<string, unknown>
+  ) => {
+    const runId = getWorkerRunId(payload)
+    if (!expectedRunId) return true
+    if (!runId) return true
+    return runId === expectedRunId
+  }
+
+  const isAllowedWorkerEvent = (payload: Record<string, unknown>) => {
+    const runId = getWorkerRunId(payload)
+    if (!runId) return false
+    pruneWorkerEventAllowList()
+    const expiresAt = workerEventAllowList.get(runId)
+    if (!expiresAt) return false
+    if (expiresAt <= Date.now()) {
+      workerEventAllowList.delete(runId)
+      return false
+    }
+    return true
+  }
 
   const normalizeApiPaths = (payload: unknown) => {
     if (!isObject(payload)) return {}
@@ -325,6 +414,30 @@ const installBridgeScript = () => {
     )
   }
 
+  const flushBufferedWorkerEvents = (requestState: {
+    requestId: string
+    allowWorkerEvents: boolean
+    expectedRunId: string
+    bufferedEvents: Array<{
+      eventName: string
+      payload: Record<string, unknown>
+    }>
+  }) => {
+    if (!requestState.allowWorkerEvents) return
+    requestState.bufferedEvents.forEach(({ eventName, payload }) => {
+      if (!isAllowedBufferedWorkerEvent(requestState.expectedRunId, payload)) {
+        return
+      }
+
+      const runId = getWorkerRunId(payload) || requestState.expectedRunId
+      if (runId) {
+        markWorkerEventRunAllowed(runId)
+      }
+
+      postWorkerEvent(eventName, payload, requestState.requestId)
+    })
+  }
+
   const isContextInvalidatedMessage = (message: unknown) =>
     String(message || "").toLowerCase().includes("context invalidated")
 
@@ -336,7 +449,10 @@ const installBridgeScript = () => {
 
     const requestId = String(data[REQUEST_ID_FIELD] || "").trim() || buildRequestId()
 
-    const runId = normalizeRunId(data.run_id || data.runId)
+    const explicitRunId = normalizeRunId(
+      data.run_id || data.runId || data.run_uuid || data.runUuid
+    )
+    const runId = explicitRunId || inferRunIdFromDom()
     const workerModeRequested = Boolean(
       runId || data.worker_mode === true || data.workerMode === true
     )
@@ -412,19 +528,6 @@ const installBridgeScript = () => {
       return
     }
 
-    if (mode === "single" && !runId) {
-      postResponse(
-        {
-          ok: false,
-          error: "Mode single bridge wajib menyertakan run_id.",
-          count: orders.length,
-          mode
-        },
-        requestId
-      )
-      return
-    }
-
     const apiPaths = normalizeApiPaths(
       data.api_paths || data.apiPaths || data.worker_api
     )
@@ -464,10 +567,21 @@ const installBridgeScript = () => {
         }
 
     try {
+      activeRequestState = {
+        requestId,
+        allowWorkerEvents: workerModeRequested,
+        expectedRunId: runId,
+        bufferedEvents: []
+      }
+
       chrome.runtime.sendMessage(runtimeMessage, (response) => {
         const runtimeErrorMessage = chrome.runtime.lastError?.message || ""
 
         if (runtimeErrorMessage) {
+          if (activeRequestState?.requestId === requestId) {
+            activeRequestState = null
+          }
+
           postResponse(
             {
               ok: false,
@@ -480,6 +594,18 @@ const installBridgeScript = () => {
             requestId
           )
           return
+        }
+
+        const requestState =
+          activeRequestState?.requestId === requestId ? activeRequestState : null
+
+        const responseRunId = normalizeRunId(
+          (response as any)?.runId || (response as any)?.run_id || runId
+        )
+
+        if (requestState?.allowWorkerEvents && responseRunId) {
+          requestState.expectedRunId = requestState.expectedRunId || responseRunId
+          markWorkerEventRunAllowed(requestState.expectedRunId)
         }
 
         postResponse(
@@ -497,8 +623,19 @@ const installBridgeScript = () => {
           },
           requestId
         )
+
+        if (requestState) {
+          flushBufferedWorkerEvents(requestState)
+          if (activeRequestState?.requestId === requestId) {
+            activeRequestState = null
+          }
+        }
       })
     } catch (error) {
+      if (activeRequestState?.requestId === requestId) {
+        activeRequestState = null
+      }
+
       const message = String((error as Error)?.message || error || "")
       postResponse(
         {
@@ -539,7 +676,32 @@ const installBridgeScript = () => {
     }
 
     if (!message || message.type !== "POWERMAXX_BRIDGE_EVENT") return
-    postWorkerEvent(message.event || "", message.payload || "")
+    const eventPayload = isObject(message.payload)
+      ? (message.payload as Record<string, unknown>)
+      : {}
+    const eventName = String(message.event || "")
+
+    if (activeRequestState?.requestId) {
+      if (
+        activeRequestState.allowWorkerEvents &&
+        isAllowedBufferedWorkerEvent(
+          activeRequestState.expectedRunId,
+          eventPayload
+        )
+      ) {
+        activeRequestState.bufferedEvents.push({
+          eventName,
+          payload: eventPayload
+        })
+      }
+      return
+    }
+
+    if (!isAllowedWorkerEvent(eventPayload)) {
+      return
+    }
+
+    postWorkerEvent(eventName, eventPayload)
   })
 
   window.addEventListener("message", (event: MessageEvent) => {
