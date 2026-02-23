@@ -13,12 +13,17 @@ export interface ClaimedSignal<TClaim> {
 export interface EmptySignal {
   type: "empty"
   terminal: boolean
+  stopReason?: WorkerStopReason
+  delayMs?: number | null
+  actionHint?: string
 }
 
 export interface RetryableErrorSignal {
   type: "retryable_error"
   status: number
   message: string
+  retryDelayMs?: number | null
+  actionHint?: string
 }
 
 export interface FatalErrorSignal {
@@ -37,13 +42,17 @@ export type ClaimLoopSignal<TClaim> =
 export interface DurableClaimLoopOptions<TClaim> {
   poll: () => Promise<ClaimLoopSignal<TClaim>>
   onClaimed: (claim: TClaim) => Promise<void>
-  onClaimEmpty?: (attempt: number, delayMs: number) => Promise<void>
+  onClaimEmpty?: (
+    attempt: number,
+    delayMs: number,
+    signal: EmptySignal
+  ) => Promise<void>
   onRetry?: (
     attempt: number,
     delayMs: number,
     signal: RetryableErrorSignal
   ) => Promise<void>
-  shouldStop?: () => boolean
+  shouldStop?: () => boolean | WorkerStopReason
   sleep: (ms: number) => Promise<void>
   random?: () => number
 }
@@ -123,8 +132,12 @@ export const runDurableClaimLoop = async <TClaim>(
   const random = options.random || Math.random
 
   while (true) {
-    if (options.shouldStop?.()) {
-      return { stopReason: "user_stop" }
+    const stopSignal = options.shouldStop?.()
+    if (stopSignal) {
+      return {
+        stopReason:
+          stopSignal === true ? "user_stop" : (stopSignal as WorkerStopReason)
+      }
     }
 
     const signal = await options.poll()
@@ -140,13 +153,17 @@ export const runDurableClaimLoop = async <TClaim>(
       retryAttempt = 0
 
       if (signal.terminal) {
-        return { stopReason: "run_terminal" }
+        return { stopReason: signal.stopReason || "run_terminal" }
       }
 
       emptyAttempt += 1
-      const delayMs = computeIdleBackoffMs(emptyAttempt)
+      const controlDelayMs = Number(signal.delayMs)
+      const delayMs =
+        Number.isFinite(controlDelayMs) && controlDelayMs >= 0
+          ? Math.trunc(controlDelayMs)
+          : computeIdleBackoffMs(emptyAttempt)
       if (options.onClaimEmpty) {
-        await options.onClaimEmpty(emptyAttempt, delayMs)
+        await options.onClaimEmpty(emptyAttempt, delayMs, signal)
       }
       await options.sleep(delayMs)
       continue
@@ -154,7 +171,12 @@ export const runDurableClaimLoop = async <TClaim>(
 
     if (signal.type === "retryable_error") {
       retryAttempt += 1
-      const delayMs = computeRetryBackoffMs(retryAttempt, random)
+      const computedDelayMs = computeRetryBackoffMs(retryAttempt, random)
+      const controlDelayMs = Number(signal.retryDelayMs)
+      const delayMs =
+        Number.isFinite(controlDelayMs) && controlDelayMs > 0
+          ? Math.max(Math.trunc(controlDelayMs), computedDelayMs)
+          : computedDelayMs
       if (options.onRetry) {
         await options.onRetry(retryAttempt, delayMs, signal)
       }

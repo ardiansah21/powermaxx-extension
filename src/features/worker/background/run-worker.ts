@@ -377,6 +377,137 @@ const formatWorkerApiError = (label: string, response: FetchJsonResult) => {
   return `${label} ${response.status}${suffix}`
 }
 
+interface WorkerControlSnapshot {
+  shouldStop: boolean
+  stopReason: WorkerStopReason | null
+  nextPollDelayMs: number | null
+  heartbeatMs: number | null
+  orderTimeoutMs: number | null
+  actionHint: string
+}
+
+interface RetryDirective {
+  retryable: boolean
+  retryDelayMs: number | null
+  actionHint: string
+}
+
+const normalizeControlDelay = (value: unknown): number | null => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return null
+  return Math.max(0, Math.trunc(num))
+}
+
+const normalizeWorkerStopReason = (value: unknown): WorkerStopReason | null => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+
+  if (!normalized) return null
+
+  if (
+    normalized === "run_terminal" ||
+    normalized === "run_complete_ack" ||
+    normalized === "run_complete" ||
+    normalized === "terminal"
+  ) {
+    return "run_terminal"
+  }
+
+  if (normalized === "user_stop") {
+    return "user_stop"
+  }
+
+  if (normalized === "fatal_config") {
+    return "fatal_config"
+  }
+
+  if (normalized === "unrecoverable_auth") {
+    return "unrecoverable_auth"
+  }
+
+  if (normalized === "unrecoverable_error") {
+    return "unrecoverable_error"
+  }
+
+  return null
+}
+
+const extractActionHint = (payload: Record<string, unknown> | null) => {
+  if (!payload) return ""
+
+  const root = (isObject(payload.data) ? payload.data : payload) || payload
+
+  const inlineHint = String(root.action_hint || root.actionHint || "").trim()
+  if (inlineHint) return inlineHint
+
+  const worker = readWorkerControl(payload)
+  return worker?.actionHint || ""
+}
+
+const readWorkerControl = (
+  payload: Record<string, unknown> | null
+): WorkerControlSnapshot | null => {
+  if (!payload) return null
+
+  const root = (isObject(payload.data) ? payload.data : payload) || payload
+  const raw =
+    (isObject(root.worker) && root.worker) ||
+    (isObject(root.worker_control) && root.worker_control) ||
+    (isObject(root.workerControl) && root.workerControl) ||
+    null
+
+  if (!raw) return null
+
+  const shouldStop =
+    raw.should_stop === true || raw.shouldStop === true || raw.terminal === true
+  const stopReason = normalizeWorkerStopReason(
+    raw.stop_reason || raw.stopReason || null
+  )
+
+  return {
+    shouldStop,
+    stopReason: shouldStop ? stopReason || "run_terminal" : stopReason,
+    nextPollDelayMs: normalizeControlDelay(
+      raw.next_poll_delay_ms ?? raw.nextPollDelayMs
+    ),
+    heartbeatMs: normalizeControlDelay(raw.heartbeat_ms ?? raw.heartbeatMs),
+    orderTimeoutMs: normalizeControlDelay(
+      raw.order_timeout_ms ?? raw.orderTimeoutMs
+    ),
+    actionHint: String(raw.action_hint || raw.actionHint || "").trim()
+  }
+}
+
+const readRetryDirective = (response: FetchJsonResult): RetryDirective => {
+  const payload = isObject(response.json) ? response.json : null
+  const root = payload
+    ? ((isObject(payload.data) ? payload.data : payload) as Record<
+        string,
+        unknown
+      >)
+    : null
+  const retryable =
+    root?.retryable === true || payload?.retryable === true
+      ? true
+      : root?.retryable === false || payload?.retryable === false
+        ? false
+        : isRetryablePollStatus(response.status)
+  const retryDelayMs = normalizeControlDelay(
+    root?.retry_delay_ms ??
+      root?.retryDelayMs ??
+      payload?.retry_delay_ms ??
+      payload?.retryDelayMs
+  )
+  const actionHint = extractActionHint(payload)
+
+  return {
+    retryable,
+    retryDelayMs,
+    actionHint
+  }
+}
+
 interface WorkerSession {
   key: string
   runId: string
@@ -395,6 +526,7 @@ interface WorkerSession {
   extensionVersion: string
   stopRequested: boolean
   stopReason: WorkerStopReason | null
+  emptyPollAttempt: number
   lastClaimAt: number | null
   lastPollAt: number | null
   lastError: string
@@ -466,6 +598,39 @@ const buildWorkerStallPayload = (session: WorkerSession, idleMs: number) => {
     active_identifier: activeOrder?.identifier || "",
     active_marketplace: activeOrder?.marketplace || "",
     active_duration_ms: activeOrder ? Date.now() - activeOrder.startedAt : 0
+  }
+}
+
+const applyWorkerControlToSession = (
+  session: WorkerSession,
+  control: WorkerControlSnapshot | null
+) => {
+  if (!control) return
+
+  if (control.heartbeatMs !== null) {
+    session.heartbeatIntervalMs = normalizePositiveInt(
+      control.heartbeatMs,
+      session.heartbeatIntervalMs,
+      5000,
+      30000
+    )
+  }
+
+  if (control.orderTimeoutMs !== null) {
+    session.orderTimeoutMs = normalizePositiveInt(
+      control.orderTimeoutMs,
+      session.orderTimeoutMs,
+      60000,
+      600000
+    )
+  }
+
+  if (control.shouldStop) {
+    session.stopRequested = true
+
+    if (session.stopReason !== "user_stop") {
+      session.stopReason = control.stopReason || "run_terminal"
+    }
   }
 }
 
@@ -893,11 +1058,14 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   const url = buildWorkerUrl(session.baseUrl, session.apiPaths.claimNext, {
     runId: session.runId
   })
+  const pollAttempt = Math.max(1, Math.trunc(session.emptyPollAttempt || 1))
 
   const claimPayload = {
     ...buildWorkerCanonicalMeta(session),
     action: session.action,
-    mode: session.mode
+    mode: session.mode,
+    poll_attempt: pollAttempt,
+    pollAttempt
   }
 
   const response = await fetchJsonWithTimeout(
@@ -913,6 +1081,7 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   )
 
   if (!response.ok) {
+    const retryDirective = readRetryDirective(response)
     const formattedError = formatWorkerApiError("Claim next gagal", response)
     session.lastError = formattedError
 
@@ -925,11 +1094,13 @@ const claimNextRunOrder = async (session: WorkerSession) => {
       }
     }
 
-    if (isRetryablePollStatus(response.status)) {
+    if (retryDirective.retryable && isRetryablePollStatus(response.status)) {
       return {
         type: "retryable_error" as const,
         status: response.status,
-        message: formattedError
+        message: formattedError,
+        retryDelayMs: retryDirective.retryDelayMs,
+        actionHint: retryDirective.actionHint
       }
     }
 
@@ -942,16 +1113,31 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   }
 
   session.lastError = ""
-
-  const terminal = isTerminalFromPayload(response.json)
+  const workerControl = readWorkerControl(response.json)
+  applyWorkerControlToSession(session, workerControl)
+  const terminal = workerControl?.shouldStop || isTerminalFromPayload(response.json)
   const claimed = normalizeClaimedOrder(response.json, session.action)
 
   if (!claimed?.hasOrder) {
+    if (!terminal) {
+      session.emptyPollAttempt = Math.min(9999, pollAttempt + 1)
+    } else {
+      session.emptyPollAttempt = 1
+    }
+
     return {
       type: "empty" as const,
-      terminal
+      terminal,
+      stopReason: terminal
+        ? workerControl?.stopReason || "run_terminal"
+        : undefined,
+      delayMs: terminal ? 0 : workerControl?.nextPollDelayMs ?? null,
+      actionHint:
+        workerControl?.actionHint || extractActionHint(response.json) || ""
     }
   }
+
+  session.emptyPollAttempt = 1
 
   return {
     type: "claimed" as const,
@@ -1037,6 +1223,7 @@ const reportRunOrder = async (
 
     lastResponse = response
     if (response.ok) {
+      applyWorkerControlToSession(session, readWorkerControl(response.json))
       session.reportedOrders.add(dedupeKey)
       await markPersistedReportedOrder(dedupeKey)
       return {
@@ -1046,16 +1233,22 @@ const reportRunOrder = async (
       }
     }
 
-    const shouldRetry = isRetryablePollStatus(response.status)
+    const retryDirective = readRetryDirective(response)
+    const shouldRetry =
+      retryDirective.retryable && isRetryablePollStatus(response.status)
     if (!shouldRetry || attempt >= REPORT_RETRY_ATTEMPTS) {
       break
     }
 
-    const delayMs = computeRetryBackoffMs(attempt, Math.random, {
+    const computedDelayMs = computeRetryBackoffMs(attempt, Math.random, {
       baseMs: REPORT_RETRY_BACKOFF_BASE_MS,
       maxMs: REPORT_RETRY_BACKOFF_MAX_MS,
       jitterRatio: REPORT_RETRY_JITTER_RATIO
     })
+    const delayMs =
+      retryDirective.retryDelayMs && retryDirective.retryDelayMs > 0
+        ? Math.max(retryDirective.retryDelayMs, computedDelayMs)
+        : computedDelayMs
     const retryError = formatWorkerApiError("Report run order gagal", response)
     session.lastError = retryError
 
@@ -1070,7 +1263,8 @@ const reportRunOrder = async (
       attempt,
       status: response.status,
       nextRetryDelayMs: delayMs,
-      error: retryError
+      error: retryError,
+      actionHint: retryDirective.actionHint || null
     })
 
     workerLog(session, "warn", "worker.poll.retry", {
@@ -1079,7 +1273,8 @@ const reportRunOrder = async (
       attempt,
       status: response.status,
       next_retry_delay_ms: delayMs,
-      error: retryError
+      error: retryError,
+      action_hint: retryDirective.actionHint || null
     })
 
     await sleep(delayMs)
@@ -1161,13 +1356,17 @@ const processClaimedRunOrder = async (
         run_id: session.runId,
         timestamp: Date.now()
       }).then((heartbeatResponse) => {
+        const heartbeatControl = readWorkerControl(heartbeatResponse.json)
+        applyWorkerControlToSession(session, heartbeatControl)
+
         void sendBridgeWorkerEvent(session.sourceTabId, "run_order_heartbeat", {
           run_order_id: runOrderId,
           attempt_no: attemptNo,
           worker_id: session.workerId,
           run_id: session.runId,
           ok: heartbeatResponse.ok,
-          status: heartbeatResponse.status
+          status: heartbeatResponse.status,
+          action_hint: heartbeatControl?.actionHint || null
         })
       })
     }, session.heartbeatIntervalMs)
@@ -1212,6 +1411,10 @@ const processClaimedRunOrder = async (
       attemptNo,
       reportPayload
     )
+    const reportControl = reportResponse.response
+      ? readWorkerControl(reportResponse.response.json)
+      : null
+    applyWorkerControlToSession(session, reportControl)
 
     if (!reportResponse.ok) {
       session.stats.report_failed += 1
@@ -1226,7 +1429,9 @@ const processClaimedRunOrder = async (
       error_code: errorCode,
       error_message: errorMessage,
       technical_error: technicalError,
-      action_hint: result.ok ? null : buildAutomationActionHint(errorCode),
+      action_hint:
+        reportControl?.actionHint ||
+        (result.ok ? null : buildAutomationActionHint(errorCode)),
       report_ok: reportResponse.ok
     })
 
@@ -1272,6 +1477,10 @@ const processClaimedRunOrder = async (
         fetchResult: null
       })
     )
+    const reportControl = reportResponse.response
+      ? readWorkerControl(reportResponse.response.json)
+      : null
+    applyWorkerControlToSession(session, reportControl)
 
     if (!reportResponse.ok) {
       session.stats.report_failed += 1
@@ -1286,7 +1495,7 @@ const processClaimedRunOrder = async (
       error_code: errorCode,
       error_message: errorMessage,
       technical_error: technicalError,
-      action_hint: buildAutomationActionHint(errorCode),
+      action_hint: reportControl?.actionHint || buildAutomationActionHint(errorCode),
       report_ok: reportResponse.ok
     })
 
@@ -1358,13 +1567,14 @@ const runWorkerLoop = async (
   try {
     const loopResult = await runDurableClaimLoop({
       sleep,
-      shouldStop: () => session.stopRequested,
+      shouldStop: () =>
+        session.stopRequested ? session.stopReason || "user_stop" : false,
       poll: async () => {
         session.lastPollAt = Date.now()
         await persistWorkerSessionState(session)
         return claimNextRunOrder(session)
       },
-      onClaimEmpty: async (attempt, delayMs) => {
+      onClaimEmpty: async (attempt, delayMs, signal) => {
         await markWorkerProgress(session, "claim_empty")
         await persistWorkerSessionState(session)
 
@@ -1375,12 +1585,14 @@ const runWorkerLoop = async (
           runId: session.runId,
           workerId: session.workerId,
           attempt,
-          nextPollDelayMs: delayMs
+          nextPollDelayMs: delayMs,
+          actionHint: signal.actionHint || null
         })
 
         workerLog(session, "log", "worker.claim.empty", {
           attempt,
-          next_poll_delay_ms: delayMs
+          next_poll_delay_ms: delayMs,
+          action_hint: signal.actionHint || null
         })
       },
       onRetry: async (attempt, delayMs, signal) => {
@@ -1396,14 +1608,16 @@ const runWorkerLoop = async (
           attempt,
           status: signal.status,
           nextRetryDelayMs: delayMs,
-          error: signal.message
+          error: signal.message,
+          actionHint: signal.actionHint || null
         })
 
         workerLog(session, "warn", "worker.poll.retry", {
           attempt,
           status: signal.status,
           next_retry_delay_ms: delayMs,
-          error: signal.message
+          error: signal.message,
+          action_hint: signal.actionHint || null
         })
       },
       onClaimed: async (claimed) => {
@@ -1570,6 +1784,7 @@ const startRunWorkerInternal = async (args: {
         extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
         stopRequested: false,
         stopReason: "fatal_config",
+        emptyPollAttempt: 1,
         lastClaimAt: resumeState.last_claim_at || null,
         lastPollAt: Date.now(),
         lastError: "Sesi login belum tersedia untuk resume worker.",
@@ -1641,6 +1856,7 @@ const startRunWorkerInternal = async (args: {
         extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
         stopRequested: false,
         stopReason: "fatal_config",
+        emptyPollAttempt: 1,
         lastClaimAt: resumeState.last_claim_at || null,
         lastPollAt: Date.now(),
         lastError: "Base URL belum diatur untuk resume worker.",
@@ -1764,6 +1980,7 @@ const startRunWorkerInternal = async (args: {
     extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
     stopRequested: false,
     stopReason: null,
+    emptyPollAttempt: 1,
     lastClaimAt: resumeState?.last_claim_at ?? null,
     lastPollAt: resumeState?.last_poll_at ?? null,
     lastError: String(resumeState?.last_error || "").trim(),
