@@ -351,5 +351,43 @@ export const extractPowermaxxOrderNo = (data: unknown): string => {
     if (orderNo) return orderNo
   }
 
+  const ORDER_NO_KEYS = new Set([
+    "order_no",
+    "orderNo",
+    "order_number",
+    "orderNumber",
+    "no_order",
+    "noOrder"
+  ])
+
+  const seen = new Set<unknown>()
+  const stack: unknown[] = [record]
+
+  while (stack.length) {
+    const current = stack.pop()
+    if (!current || typeof current !== "object") continue
+    if (seen.has(current)) continue
+    seen.add(current)
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        stack.push(item)
+      }
+      continue
+    }
+
+    const currentRecord = current as Record<string, unknown>
+    for (const [key, value] of Object.entries(currentRecord)) {
+      if (ORDER_NO_KEYS.has(key)) {
+        const found = normalizeOrderRefValue(value)
+        if (found) return found
+      }
+
+      if (value && typeof value === "object") {
+        stack.push(value)
+      }
+    }
+  }
+
   return ""
 }
