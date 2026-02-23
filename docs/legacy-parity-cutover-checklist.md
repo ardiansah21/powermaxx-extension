@@ -65,11 +65,12 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 2. Popup flow pass di seller aktif:
    - Tokopedia/TikTok Shop: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
    - Shopee: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
-3. Bridge mode pass:
-   - `single`: response envelope kompatibel legacy + event `run_started`.
-   - `bulk`: mixed Shopee + TikTok sukses setelah normalisasi `id_type`/`idType`.
-   - `worker`: response envelope kompatibel legacy + event lifecycle.
+3. Bridge mode:
+   - `single`: pass (`run_id` `10111294-920a-4b05-aa15-5a83e0f9922f`) dan TikTok single pass (`run_id` `5e6a3990-755e-46b6-92e2-e97dc83c7eea`), keduanya `completed 1/1`.
+   - `bulk`/`worker`: masih ada blocker pada run `a95050a7-5d3a-4b8d-911f-b1f6579fd206` yang bertahan `running 23/25` dengan 2 order TikTok berstatus `processing 2/3`.
 4. Session guard pass:
    - Setelah `Logout`, request popup ditolak dengan error terstruktur.
    - Setelah login ulang email/password, flow kembali sukses.
-5. Legacy extension sudah dinonaktifkan untuk fase cutover.
+5. Aksi lanjut sebelum cutover penuh:
+   - Hardening backend untuk stale `processing` order + auto-finalize run agar tidak tertahan `running`.
+   - Jalankan ulang UAT bulk mixed marketplace (>10 order) sampai `run_finished` konsisten.

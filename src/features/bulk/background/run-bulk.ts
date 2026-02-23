@@ -16,6 +16,10 @@ import type { PowermaxxSettings } from "~src/core/settings/schema"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import { executeFetchSendByOrder } from "~src/features/fetch-send/background/run-fetch-send"
 
+const BULK_ORDER_TIMEOUT_MS = 180000
+const BULK_STALL_DETECTION_MS = 240000
+const BULK_STALL_WATCHDOG_INTERVAL_MS = 10000
+
 const toActionMode = (action: BridgeAction) => {
   if (action === "update_income") return "update_income"
   if (action === "update_order") return "update_order"
@@ -105,7 +109,7 @@ const executeFetchSendWithAutoMarketplace = async (args: {
       order: candidate,
       actionMode: toActionMode(args.action),
       settings: args.settings,
-      timeoutMs: 180000
+      timeoutMs: BULK_ORDER_TIMEOUT_MS
     })
 
     if (result.ok) {
@@ -178,101 +182,232 @@ export const runBulkHeadless = async (args: {
       report_failed: 0
     }
 
-    await sendBridgeWorkerEvent(senderTabId, "run_started", {
+    const progress = {
+      lastProgressAt: Date.now(),
+      stallReportedAt: null as number | null,
+      activeOrder: null as
+        | {
+            runOrderId: string
+            identifier: string
+            marketplace: string
+            startedAt: number
+          }
+        | null
+    }
+
+    const buildStallPayload = (idleMs: number) => ({
       run_id: runId,
       worker_id: workerId,
-      mode: "bulk"
+      claimed: stats.claimed,
+      processed: stats.processed,
+      idle_ms: idleMs,
+      stall_threshold_ms: BULK_STALL_DETECTION_MS,
+      active_run_order_id: progress.activeOrder?.runOrderId || "",
+      active_identifier: progress.activeOrder?.identifier || "",
+      active_marketplace: progress.activeOrder?.marketplace || "",
+      active_duration_ms: progress.activeOrder
+        ? Date.now() - progress.activeOrder.startedAt
+        : 0
     })
 
-    for (let index = 0; index < orders.length; index += 1) {
-      const order = orders[index]
-      const runOrderId = `${runId}-${index + 1}`
-      const startedAt = Date.now()
+    const markBulkProgress = async (
+      reason: string,
+      detail: Record<string, unknown> = {}
+    ) => {
+      const stalledAt = progress.stallReportedAt
+      const previousProgressAt = progress.lastProgressAt
 
-      await sendBridgeWorkerEvent(senderTabId, "run_order_started", {
-        run_id: runId,
-        worker_id: workerId,
-        run_order_id: runOrderId,
-        identifier: order.id,
-        marketplace: order.marketplace,
-        action: message.action
+      progress.lastProgressAt = Date.now()
+      progress.stallReportedAt = null
+
+      if (!stalledAt) {
+        return
+      }
+
+      const idleMs = Date.now() - previousProgressAt
+      const payload = {
+        ...buildStallPayload(idleMs),
+        reason,
+        ...detail
+      }
+
+      logger.info("Bulk run resumed after stall", {
+        feature: "bulk",
+        domain: "worker",
+        step: "stall-resolved",
+        ...payload
       })
 
-      try {
-        const result = await executeFetchSendWithAutoMarketplace({
-          order,
-          action: message.action,
-          settings
+      await sendBridgeWorkerEvent(senderTabId, "run_resumed", payload)
+    }
+
+    const maybeReportBulkStalled = async () => {
+      const idleMs = Date.now() - progress.lastProgressAt
+
+      if (idleMs < BULK_STALL_DETECTION_MS) {
+        return
+      }
+
+      if (progress.stallReportedAt !== null) {
+        return
+      }
+
+      progress.stallReportedAt = Date.now()
+      const payload = buildStallPayload(idleMs)
+
+      logger.warn("Bulk run appears stalled", {
+        feature: "bulk",
+        domain: "worker",
+        step: "stall-detected",
+        ...payload
+      })
+
+      await sendBridgeWorkerEvent(senderTabId, "run_stalled", payload)
+    }
+
+    const stallWatchdog = setInterval(() => {
+      void maybeReportBulkStalled().catch((error) => {
+        logger.warn("Bulk stall watchdog failed", {
+          feature: "bulk",
+          domain: "worker",
+          step: "stall-watchdog",
+          runId,
+          workerId,
+          error: String((error as Error)?.message || error)
+        })
+      })
+    }, BULK_STALL_WATCHDOG_INTERVAL_MS)
+
+    try {
+      await sendBridgeWorkerEvent(senderTabId, "run_started", {
+        run_id: runId,
+        worker_id: workerId,
+        mode: "bulk"
+      })
+
+      for (let index = 0; index < orders.length; index += 1) {
+        const order = orders[index]
+        const runOrderId = `${runId}-${index + 1}`
+        const startedAt = Date.now()
+
+        progress.activeOrder = {
+          runOrderId,
+          identifier: order.id,
+          marketplace: order.marketplace,
+          startedAt
+        }
+
+        await sendBridgeWorkerEvent(senderTabId, "run_order_started", {
+          run_id: runId,
+          worker_id: workerId,
+          run_order_id: runOrderId,
+          identifier: order.id,
+          marketplace: order.marketplace,
+          action: message.action
         })
 
-        stats.processed += 1
+        await markBulkProgress("run_order_started", {
+          run_order_id: runOrderId,
+          identifier: order.id,
+          marketplace: order.marketplace
+        })
 
-        if (result.ok) {
-          stats.success += 1
-        } else {
-          const errorCode = classifyAutomationErrorCode(result.error)
+        try {
+          const result = await executeFetchSendWithAutoMarketplace({
+            order,
+            action: message.action,
+            settings
+          })
+
+          stats.processed += 1
+
+          if (result.ok) {
+            stats.success += 1
+          } else {
+            const errorCode = classifyAutomationErrorCode(result.error)
+            if (errorCode === "TIMEOUT") {
+              stats.timed_out += 1
+            } else {
+              stats.failed += 1
+            }
+          }
+
+          const errorCode = result.ok ? null : classifyAutomationErrorCode(result.error)
+          const status = result.ok
+            ? "success"
+            : toAutomationStatus(errorCode)
+          const errorMessage = result.ok ? null : sanitizeErrorMessage(result.error)
+          const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
+
+          await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
+            run_id: runId,
+            worker_id: workerId,
+            run_order_id: runOrderId,
+            status,
+            error_message: errorMessage,
+            error_code: errorCode,
+            technical_error: technicalError,
+            action_hint: result.ok ? null : buildAutomationActionHint(errorCode),
+            duration_ms: Date.now() - startedAt,
+            report_ok: true
+          })
+
+          await markBulkProgress("run_order_finished", {
+            run_order_id: runOrderId,
+            identifier: order.id,
+            marketplace: order.marketplace,
+            status
+          })
+        } catch (error) {
+          stats.processed += 1
+          const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
+          const errorCode = classifyAutomationErrorCode(errorMessage)
           if (errorCode === "TIMEOUT") {
             stats.timed_out += 1
           } else {
             stats.failed += 1
           }
+          const technicalError = sanitizeTechnicalError(
+            (error as Error)?.stack || (error as Error)?.message || error
+          )
+
+          const status = toAutomationStatus(errorCode)
+
+          await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
+            run_id: runId,
+            worker_id: workerId,
+            run_order_id: runOrderId,
+            status,
+            error_message: errorMessage,
+            error_code: errorCode,
+            technical_error: technicalError,
+            action_hint: buildAutomationActionHint(errorCode),
+            duration_ms: Date.now() - startedAt,
+            report_ok: false
+          })
+
+          await markBulkProgress("run_order_finished", {
+            run_order_id: runOrderId,
+            identifier: order.id,
+            marketplace: order.marketplace,
+            status
+          })
+        } finally {
+          progress.activeOrder = null
         }
-
-        const errorCode = result.ok ? null : classifyAutomationErrorCode(result.error)
-        const status = result.ok
-          ? "success"
-          : toAutomationStatus(errorCode)
-        const errorMessage = result.ok ? null : sanitizeErrorMessage(result.error)
-        const technicalError = result.ok ? null : sanitizeTechnicalError(result.error)
-
-        await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
-          run_id: runId,
-          worker_id: workerId,
-          run_order_id: runOrderId,
-          status,
-          error_message: errorMessage,
-          error_code: errorCode,
-          technical_error: technicalError,
-          action_hint: result.ok ? null : buildAutomationActionHint(errorCode),
-          duration_ms: Date.now() - startedAt,
-          report_ok: true
-        })
-      } catch (error) {
-        stats.processed += 1
-        const errorMessage = sanitizeErrorMessage((error as Error)?.message || error)
-        const errorCode = classifyAutomationErrorCode(errorMessage)
-        if (errorCode === "TIMEOUT") {
-          stats.timed_out += 1
-        } else {
-          stats.failed += 1
-        }
-        const technicalError = sanitizeTechnicalError(
-          (error as Error)?.stack || (error as Error)?.message || error
-        )
-
-        await sendBridgeWorkerEvent(senderTabId, "run_order_finished", {
-          run_id: runId,
-          worker_id: workerId,
-          run_order_id: runOrderId,
-          status: toAutomationStatus(errorCode),
-          error_message: errorMessage,
-          error_code: errorCode,
-          technical_error: technicalError,
-          action_hint: buildAutomationActionHint(errorCode),
-          duration_ms: Date.now() - startedAt,
-          report_ok: false
-        })
       }
+
+      await sendBridgeWorkerEvent(senderTabId, "run_finished", {
+        run_id: runId,
+        worker_id: workerId,
+        ok: true,
+        stats
+      })
+    } finally {
+      clearInterval(stallWatchdog)
+      progress.activeOrder = null
+      activeBulkSessionBySource.delete(sourceKey)
     }
-
-    await sendBridgeWorkerEvent(senderTabId, "run_finished", {
-      run_id: runId,
-      worker_id: workerId,
-      ok: true,
-      stats
-    })
-
-    activeBulkSessionBySource.delete(sourceKey)
   }
 
   // Delay worker start to ensure runtime response is posted first.
@@ -297,8 +432,6 @@ export const runBulkHeadless = async (args: {
         ),
         action_hint: buildAutomationActionHint("EXTENSION_RUNTIME")
       })
-
-      activeBulkSessionBySource.delete(sourceKey)
     })
   }, 0)
 

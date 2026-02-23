@@ -43,6 +43,8 @@ export interface BridgeInboundMessage {
   orderTimeoutMs?: number
   request_timeout_ms?: number
   requestTimeoutMs?: number
+  stall_detection_ms?: number
+  stallDetectionMs?: number
   complete_on_finish?: boolean
   completeOnFinish?: boolean
 }
@@ -88,9 +90,15 @@ export interface RuntimeSingleRequest {
   marketplace?: string
   id_type?: string
   heartbeat_interval_ms?: number
+  heartbeatMs?: number
   order_timeout_ms?: number
+  orderTimeoutMs?: number
   request_timeout_ms?: number
+  requestTimeoutMs?: number
+  stall_detection_ms?: number
+  stallDetectionMs?: number
   complete_on_finish?: boolean
+  completeOnFinish?: boolean
   orders: NormalizedOrder[]
   sourceUrl?: string
 }
@@ -116,9 +124,15 @@ export interface RuntimeRunWorkerRequest {
   marketplace?: string
   id_type?: string
   heartbeat_interval_ms?: number
+  heartbeatMs?: number
   order_timeout_ms?: number
+  orderTimeoutMs?: number
   request_timeout_ms?: number
+  requestTimeoutMs?: number
+  stall_detection_ms?: number
+  stallDetectionMs?: number
   complete_on_finish?: boolean
+  completeOnFinish?: boolean
   orders: NormalizedOrder[]
   sourceUrl?: string
 }

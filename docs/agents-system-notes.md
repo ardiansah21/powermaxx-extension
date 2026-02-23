@@ -34,3 +34,5 @@
 - Bulk headless menormalisasi varian field identitas order (`id_type` legacy dan `idType` baru) agar payload bridge lama dan baru tetap kompatibel.
 - Event worker/bulk juga dibroadcast ke runtime message internal (`POWERMAXX_INTERNAL_WORKER_EVENT`) untuk konsumsi UI tab operator.
 - Options page sekarang memakai section collapsible per domain (Auth, Shopee, Shopee AWB, TikTok, TikTok AWB) untuk mengurangi kepadatan form.
+- Worker loop dan bulk headless kini punya stall watchdog: jika tidak ada progress melewati threshold, extension kirim event `run_stalled` dengan konteks order aktif (`run_order_id`, `identifier`, `marketplace`), lalu `run_resumed` saat progress lanjut.
+- UAT bulk terbaru memperlihatkan kasus backend stuck di status `running 23/25` (dua order tetap `processing 2/3`); event stall dari extension dipakai sebagai sinyal diagnostik untuk hardening backend.

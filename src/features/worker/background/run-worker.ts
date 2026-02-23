@@ -23,6 +23,10 @@ const WORKER_LOG_PREFIX = "[PMX-WORKER]"
 const DEFAULT_WORKER_HEARTBEAT_MS = 5000
 const DEFAULT_WORKER_ORDER_TIMEOUT_MS = 180000
 const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 30000
+const DEFAULT_WORKER_STALL_DETECTION_MS = 240000
+const MIN_WORKER_STALL_DETECTION_MS = 60000
+const MAX_WORKER_STALL_DETECTION_MS = 900000
+const DEFAULT_WORKER_STALL_WATCHDOG_INTERVAL_MS = 10000
 const INITIAL_EMPTY_CLAIM_RETRY_LIMIT = 8
 const INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS = 500
 const WORKER_REPORTED_STORAGE_KEY = "pmxWorkerReportedRunOrders"
@@ -225,9 +229,20 @@ interface WorkerSession {
   heartbeatIntervalMs: number
   orderTimeoutMs: number
   requestTimeoutMs: number
+  stallDetectionMs: number
   sourceTabId: number | null
   extensionVersion: string
   reportedOrders: Set<string>
+  progress: {
+    lastProgressAt: number
+    stallReportedAt: number | null
+    activeOrder: {
+      runOrderId: string
+      identifier: string
+      marketplace: string
+      startedAt: number
+    } | null
+  }
   stats: {
     claimed: number
     processed: number
@@ -236,6 +251,84 @@ interface WorkerSession {
     timed_out: number
     report_failed: number
   }
+}
+
+const buildWorkerStallPayload = (session: WorkerSession, idleMs: number) => {
+  const activeOrder = session.progress.activeOrder
+
+  return {
+    run_id: session.runId,
+    worker_id: session.workerId,
+    claimed: session.stats.claimed,
+    processed: session.stats.processed,
+    idle_ms: idleMs,
+    stall_threshold_ms: session.stallDetectionMs,
+    active_run_order_id: activeOrder?.runOrderId || "",
+    active_identifier: activeOrder?.identifier || "",
+    active_marketplace: activeOrder?.marketplace || "",
+    active_duration_ms: activeOrder ? Date.now() - activeOrder.startedAt : 0
+  }
+}
+
+const markWorkerProgress = async (
+  session: WorkerSession,
+  reason: string,
+  detail: Record<string, unknown> = {}
+) => {
+  const stalledAt = session.progress.stallReportedAt
+  const previousProgressAt = session.progress.lastProgressAt
+
+  session.progress.lastProgressAt = Date.now()
+  session.progress.stallReportedAt = null
+
+  if (!stalledAt) {
+    return
+  }
+
+  const idleMs = Date.now() - previousProgressAt
+  const payload = {
+    ...buildWorkerStallPayload(session, idleMs),
+    reason,
+    ...detail
+  }
+
+  logger.info("Worker run resumed after stall", {
+    feature: "worker",
+    domain: "run-loop",
+    step: "stall-resolved",
+    ...payload
+  })
+
+  workerLog(session, "log", "run_resumed", payload)
+
+  await sendBridgeWorkerEvent(session.sourceTabId, "run_resumed", payload)
+}
+
+const maybeReportWorkerStalled = async (session: WorkerSession) => {
+  const idleMs = Date.now() - session.progress.lastProgressAt
+
+  if (idleMs < session.stallDetectionMs) {
+    return
+  }
+
+  if (session.progress.stallReportedAt !== null) {
+    return
+  }
+
+  session.progress.stallReportedAt = Date.now()
+
+  const payload = buildWorkerStallPayload(session, idleMs)
+
+  logger.warn("Worker run appears stalled", {
+    feature: "worker",
+    domain: "run-loop",
+    step: "stall-detected",
+    ...payload
+  })
+
+  workerLog(session, "warn", "run_stalled", payload)
+
+  await sendBridgeWorkerEvent(session.sourceTabId, "run_stalled", payload)
 }
 
 const workerLog = (
@@ -843,65 +936,115 @@ const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings
   })
 
   let initialEmptyClaimAttempts = 0
+  const watchdogInterval = Math.max(
+    3000,
+    Math.min(
+      DEFAULT_WORKER_STALL_WATCHDOG_INTERVAL_MS,
+      session.heartbeatIntervalMs
+    )
+  )
 
-  while (true) {
-    const claimResult = await claimNextRunOrder(session)
+  const stallWatchdog = setInterval(() => {
+    void maybeReportWorkerStalled(session).catch((error) => {
+      logger.warn("Worker stall watchdog failed", {
+        feature: "worker",
+        domain: "run-loop",
+        step: "stall-watchdog",
+        runId: session.runId,
+        workerId: session.workerId,
+        error: String((error as Error)?.message || error)
+      })
+    })
+  }, watchdogInterval)
 
-    if (!claimResult.ok) {
-      throw new Error(claimResult.error || "Gagal claim order worker.")
-    }
+  try {
+    while (true) {
+      const claimResult = await claimNextRunOrder(session)
 
-    const claimed = claimResult.claimed
-    if (!claimed?.hasOrder) {
-      if (session.stats.claimed === 0) {
-        if (initialEmptyClaimAttempts < INITIAL_EMPTY_CLAIM_RETRY_LIMIT) {
-          initialEmptyClaimAttempts += 1
-
-          workerLog(session, "warn", "claim_empty_retry", {
-            attempt: initialEmptyClaimAttempts,
-            max_attempts: INITIAL_EMPTY_CLAIM_RETRY_LIMIT
-          })
-
-          await sleep(INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS)
-          continue
-        }
+      if (!claimResult.ok) {
+        throw new Error(claimResult.error || "Gagal claim order worker.")
       }
 
-      break
+      const claimed = claimResult.claimed
+      if (!claimed?.hasOrder) {
+        await markWorkerProgress(session, "claim_empty")
+
+        if (session.stats.claimed === 0) {
+          if (initialEmptyClaimAttempts < INITIAL_EMPTY_CLAIM_RETRY_LIMIT) {
+            initialEmptyClaimAttempts += 1
+
+            workerLog(session, "warn", "claim_empty_retry", {
+              attempt: initialEmptyClaimAttempts,
+              max_attempts: INITIAL_EMPTY_CLAIM_RETRY_LIMIT
+            })
+
+            await sleep(INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS)
+            continue
+          }
+        }
+
+        break
+      }
+
+      initialEmptyClaimAttempts = 0
+      session.stats.claimed += 1
+
+      const activeRunOrderId = claimed.runOrderId || `${Date.now()}`
+      session.progress.activeOrder = {
+        runOrderId: activeRunOrderId,
+        identifier: claimed.order?.id || "",
+        marketplace: claimed.order?.marketplace || "",
+        startedAt: Date.now()
+      }
+
+      await markWorkerProgress(session, "claim_order", {
+        run_order_id: activeRunOrderId,
+        identifier: session.progress.activeOrder.identifier,
+        marketplace: session.progress.activeOrder.marketplace
+      })
+
+      const outcome = await processClaimedRunOrder(session, claimed, settings)
+      session.stats.processed += 1
+
+      if (outcome.ok) {
+        session.stats.success += 1
+      } else if (outcome.status === "timed_out") {
+        session.stats.timed_out += 1
+      } else {
+        session.stats.failed += 1
+      }
+
+      await markWorkerProgress(session, "run_order_finished", {
+        run_order_id: activeRunOrderId,
+        identifier: session.progress.activeOrder?.identifier || "",
+        marketplace: session.progress.activeOrder?.marketplace || "",
+        status: outcome.status
+      })
+
+      session.progress.activeOrder = null
     }
 
-    initialEmptyClaimAttempts = 0
-    session.stats.claimed += 1
-
-    const outcome = await processClaimedRunOrder(session, claimed, settings)
-    session.stats.processed += 1
-
-    if (outcome.ok) {
-      session.stats.success += 1
-    } else if (outcome.status === "timed_out") {
-      session.stats.timed_out += 1
-    } else {
-      session.stats.failed += 1
+    const completion = await completeRunIfNeeded(session)
+    if (!completion.ok) {
+      workerLog(session, "warn", "run_complete_failed", {
+        status: completion.status
+      })
     }
-  }
 
-  const completion = await completeRunIfNeeded(session)
-  if (!completion.ok) {
-    workerLog(session, "warn", "run_complete_failed", {
-      status: completion.status
+    await sendBridgeWorkerEvent(session.sourceTabId, "run_finished", {
+      run_id: session.runId,
+      worker_id: session.workerId,
+      ok: true,
+      stats: session.stats
     })
+
+    workerLog(session, "log", "run_finished", {
+      stats: session.stats
+    })
+  } finally {
+    clearInterval(stallWatchdog)
+    session.progress.activeOrder = null
   }
-
-  await sendBridgeWorkerEvent(session.sourceTabId, "run_finished", {
-    run_id: session.runId,
-    worker_id: session.workerId,
-    ok: true,
-    stats: session.stats
-  })
-
-  workerLog(session, "log", "run_finished", {
-    stats: session.stats
-  })
 }
 
 export const startRunWorker = async (args: {
@@ -968,33 +1111,39 @@ export const startRunWorker = async (args: {
   }
 
   const completeOnFinish =
-    Boolean(
-      (message as RuntimeRunWorkerRequest & { completeOnFinish?: boolean })
-        .completeOnFinish
-    ) || Boolean(message.complete_on_finish)
+    Boolean(message.completeOnFinish) || Boolean(message.complete_on_finish)
 
   const heartbeatIntervalMs = normalizePositiveInt(
-    (message as RuntimeRunWorkerRequest & { heartbeatMs?: number }).heartbeatMs ??
-      message.heartbeat_interval_ms,
+    message.heartbeatMs ?? message.heartbeat_interval_ms,
     DEFAULT_WORKER_HEARTBEAT_MS,
     5000,
     30000
   )
 
   const orderTimeoutMs = normalizePositiveInt(
-    (message as RuntimeRunWorkerRequest & { orderTimeoutMs?: number }).orderTimeoutMs ??
-      message.order_timeout_ms,
+    message.orderTimeoutMs ?? message.order_timeout_ms,
     DEFAULT_WORKER_ORDER_TIMEOUT_MS,
     60000,
     600000
   )
 
   const requestTimeoutMs = normalizePositiveInt(
-    (message as RuntimeRunWorkerRequest & { requestTimeoutMs?: number })
-      .requestTimeoutMs ?? message.request_timeout_ms,
+    message.requestTimeoutMs ?? message.request_timeout_ms,
     DEFAULT_WORKER_REQUEST_TIMEOUT_MS,
     5000,
     120000
+  )
+
+  const computedStallTimeoutMs = Math.max(
+    DEFAULT_WORKER_STALL_DETECTION_MS,
+    orderTimeoutMs + requestTimeoutMs + heartbeatIntervalMs * 2
+  )
+
+  const stallDetectionMs = normalizePositiveInt(
+    message.stallDetectionMs ?? message.stall_detection_ms,
+    computedStallTimeoutMs,
+    MIN_WORKER_STALL_DETECTION_MS,
+    MAX_WORKER_STALL_DETECTION_MS
   )
 
   const mode = normalizeWorkerMode(message.mode)
@@ -1013,9 +1162,15 @@ export const startRunWorker = async (args: {
     heartbeatIntervalMs,
     orderTimeoutMs,
     requestTimeoutMs,
+    stallDetectionMs,
     sourceTabId: senderTabId || null,
     extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
     reportedOrders: await loadPersistedReportedOrders(runId),
+    progress: {
+      lastProgressAt: Date.now(),
+      stallReportedAt: null,
+      activeOrder: null
+    },
     stats: {
       claimed: 0,
       processed: 0,
