@@ -22,6 +22,12 @@ import {
 import type { PowermaxxSettings } from "~src/core/settings/schema"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import { executeFetchSendByOrder } from "~src/features/fetch-send/background/run-fetch-send"
+import {
+  isRetryablePollStatus,
+  runDurableClaimLoop,
+  selectResumableRunStates,
+  type WorkerStopReason
+} from "~src/features/worker/background/worker-loop-core"
 
 const WORKER_LOG_PREFIX = "[PMX-WORKER]"
 const DEFAULT_WORKER_HEARTBEAT_MS = 5000
@@ -31,10 +37,10 @@ const DEFAULT_WORKER_STALL_DETECTION_MS = 240000
 const MIN_WORKER_STALL_DETECTION_MS = 60000
 const MAX_WORKER_STALL_DETECTION_MS = 900000
 const DEFAULT_WORKER_STALL_WATCHDOG_INTERVAL_MS = 10000
-const INITIAL_EMPTY_CLAIM_RETRY_LIMIT = 8
-const INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS = 500
 const WORKER_REPORTED_STORAGE_KEY = "pmxWorkerReportedRunOrders"
 const WORKER_REPORTED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+const WORKER_RUN_STATE_STORAGE_KEY = "pmxWorkerRunStateV1"
+const WORKER_RUN_STATE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 const DEFAULT_WORKER_API_PATHS = {
   claimNext: "/api/mp-update/runs/{runId}/claim-next",
@@ -45,7 +51,8 @@ const DEFAULT_WORKER_API_PATHS = {
 
 const activeRunWorkerByKey = new Map<string, WorkerSession>()
 const activeRunWorkerByRunId = new Map<string, string>()
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const normalizePositiveInt = (
   value: unknown,
@@ -146,6 +153,101 @@ const markPersistedReportedOrder = async (dedupeKey: string) => {
   )
   current[dedupeKey] = Date.now()
   await saveWorkerReportedRegistry(current)
+}
+
+const loadWorkerRunStateRegistry = async (): Promise<
+  Record<string, PersistedWorkerState>
+> => {
+  const storage = getLocalStorage()
+  if (!storage) return {}
+
+  return new Promise((resolve) => {
+    storage.get([WORKER_RUN_STATE_STORAGE_KEY], (result) => {
+      const registry = result?.[WORKER_RUN_STATE_STORAGE_KEY]
+      resolve(
+        isObject(registry)
+          ? (registry as Record<string, PersistedWorkerState>)
+          : {}
+      )
+    })
+  })
+}
+
+const saveWorkerRunStateRegistry = async (
+  registry: Record<string, PersistedWorkerState>
+) => {
+  const storage = getLocalStorage()
+  if (!storage) return
+
+  return new Promise<void>((resolve) => {
+    storage.set({ [WORKER_RUN_STATE_STORAGE_KEY]: registry }, () => resolve())
+  })
+}
+
+const pruneWorkerRunStateRegistry = (
+  registry: Record<string, PersistedWorkerState>
+) => {
+  const now = Date.now()
+  const next: Record<string, PersistedWorkerState> = {}
+
+  Object.entries(registry || {}).forEach(([key, value]) => {
+    if (!isObject(value)) return
+    const updatedAt = Number(value.updated_at || 0)
+    const stopReason = String(value.stop_reason || "").trim()
+    const active = value.active === true && !stopReason
+    const shouldKeep =
+      active ||
+      (Number.isFinite(updatedAt) &&
+        now - updatedAt <= WORKER_RUN_STATE_RETENTION_MS)
+
+    if (!shouldKeep) {
+      return
+    }
+
+    next[key] = value as PersistedWorkerState
+  })
+
+  return next
+}
+
+const toPersistedWorkerState = (
+  session: WorkerSession
+): PersistedWorkerState => ({
+  run_id: session.runId,
+  worker_id: session.workerId,
+  mode: session.mode,
+  action: session.action,
+  api_paths: session.apiPaths,
+  complete_on_finish: session.completeOnFinish,
+  heartbeat_ms: session.heartbeatIntervalMs,
+  order_timeout_ms: session.orderTimeoutMs,
+  request_timeout_ms: session.requestTimeoutMs,
+  stall_detection_ms: session.stallDetectionMs,
+  source_tab_id: session.sourceTabId,
+  extension_version: session.extensionVersion,
+  stats: { ...session.stats },
+  last_claim_at: session.lastClaimAt,
+  last_poll_at: session.lastPollAt,
+  last_error: session.lastError,
+  stop_reason: session.stopReason,
+  active: !session.stopReason,
+  updated_at: Date.now()
+})
+
+const persistWorkerSessionState = async (session: WorkerSession) => {
+  const current = pruneWorkerRunStateRegistry(
+    await loadWorkerRunStateRegistry()
+  )
+  current[session.key] = toPersistedWorkerState(session)
+  await saveWorkerRunStateRegistry(current)
+}
+
+const markWorkerSessionStopped = async (
+  session: WorkerSession,
+  stopReason: WorkerStopReason
+) => {
+  session.stopReason = stopReason
+  await persistWorkerSessionState(session)
 }
 
 const fillPathTemplate = (
@@ -288,6 +390,11 @@ interface WorkerSession {
   stallDetectionMs: number
   sourceTabId: number | null
   extensionVersion: string
+  stopRequested: boolean
+  stopReason: WorkerStopReason | null
+  lastClaimAt: number | null
+  lastPollAt: number | null
+  lastError: string
   reportedOrders: Set<string>
   progress: {
     lastProgressAt: number
@@ -307,6 +414,28 @@ interface WorkerSession {
     timed_out: number
     report_failed: number
   }
+}
+
+interface PersistedWorkerState {
+  run_id: string
+  worker_id: string
+  mode: "single" | "bulk"
+  action: BridgeAction
+  api_paths: ReturnType<typeof buildWorkerApiPaths>
+  complete_on_finish: boolean
+  heartbeat_ms: number
+  order_timeout_ms: number
+  request_timeout_ms: number
+  stall_detection_ms: number
+  source_tab_id: number | null
+  extension_version: string
+  stats: WorkerSession["stats"]
+  last_claim_at: number | null
+  last_poll_at: number | null
+  last_error: string
+  stop_reason: WorkerStopReason | null
+  active: boolean
+  updated_at: number
 }
 
 const buildWorkerCanonicalMeta = (session: WorkerSession) => ({
@@ -516,6 +645,59 @@ const normalizeClaimedOrder = (
   }
 }
 
+const TERMINAL_RUN_STATUSES = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "cancelled",
+  "canceled",
+  "stopped",
+  "aborted",
+  "timeout",
+  "timed_out"
+])
+
+const readTerminalStatusFromPayload = (
+  payload: Record<string, unknown> | null
+) => {
+  if (!payload) return ""
+
+  const root = (isObject(payload.data) ? payload.data : payload) || payload
+
+  const directStatus = String(
+    root.run_status ||
+      root.runStatus ||
+      root.status ||
+      (isObject(root.run) ? root.run.status : "") ||
+      ""
+  )
+    .trim()
+    .toLowerCase()
+
+  if (TERMINAL_RUN_STATUSES.has(directStatus)) {
+    return directStatus
+  }
+
+  return ""
+}
+
+const isTerminalFromPayload = (payload: Record<string, unknown> | null) => {
+  if (!payload) return false
+  const root = (isObject(payload.data) ? payload.data : payload) || payload
+
+  if (
+    root.run_terminal === true ||
+    root.runTerminal === true ||
+    root.terminal === true ||
+    (isObject(root.run) &&
+      (root.run.terminal === true || root.run.is_terminal === true))
+  ) {
+    return true
+  }
+
+  return Boolean(readTerminalStatusFromPayload(payload))
+}
+
 const normalizeOrderChanges = (value: unknown) => {
   if (!Array.isArray(value)) return []
 
@@ -709,17 +891,49 @@ const claimNextRunOrder = async (session: WorkerSession) => {
   )
 
   if (!response.ok) {
+    const formattedError = formatWorkerApiError("Claim next gagal", response)
+    session.lastError = formattedError
+
+    if ([401, 403, 419].includes(response.status)) {
+      return {
+        type: "fatal_error" as const,
+        stopReason: "unrecoverable_auth" as const,
+        status: response.status,
+        message: formattedError
+      }
+    }
+
+    if (isRetryablePollStatus(response.status)) {
+      return {
+        type: "retryable_error" as const,
+        status: response.status,
+        message: formattedError
+      }
+    }
+
     return {
-      ok: false,
-      error: formatWorkerApiError("Claim next gagal", response),
-      claimed: null
+      type: "fatal_error" as const,
+      stopReason: "unrecoverable_error" as const,
+      status: response.status,
+      message: formattedError
+    }
+  }
+
+  session.lastError = ""
+
+  const terminal = isTerminalFromPayload(response.json)
+  const claimed = normalizeClaimedOrder(response.json, session.action)
+
+  if (!claimed?.hasOrder) {
+    return {
+      type: "empty" as const,
+      terminal
     }
   }
 
   return {
-    ok: true,
-    error: "",
-    claimed: normalizeClaimedOrder(response.json, session.action)
+    type: "claimed" as const,
+    claim: claimed
   }
 }
 
@@ -1028,18 +1242,29 @@ const runWorkerLoop = async (
   session: WorkerSession,
   settings: PowermaxxSettings
 ) => {
+  await persistWorkerSessionState(session)
+
   await sendBridgeWorkerEvent(session.sourceTabId, "run_started", {
     run_id: session.runId,
     worker_id: session.workerId,
     mode: session.mode
   })
 
-  workerLog(session, "log", "run_started", {
+  logger.info("Worker loop started", {
+    feature: "worker",
+    domain: "run-loop",
+    step: "worker.loop.start",
+    runId: session.runId,
+    workerId: session.workerId,
+    mode: session.mode,
+    action: session.action
+  })
+
+  workerLog(session, "log", "worker.loop.start", {
     action: session.action,
     mode: session.mode
   })
 
-  let initialEmptyClaimAttempts = 0
   const watchdogInterval = Math.max(
     3000,
     Math.min(
@@ -1062,90 +1287,136 @@ const runWorkerLoop = async (
   }, watchdogInterval)
 
   try {
-    while (true) {
-      const claimResult = await claimNextRunOrder(session)
-
-      if (!claimResult.ok) {
-        throw new Error(claimResult.error || "Gagal claim order worker.")
-      }
-
-      const claimed = claimResult.claimed
-      if (!claimed?.hasOrder) {
+    const loopResult = await runDurableClaimLoop({
+      sleep,
+      shouldStop: () => session.stopRequested,
+      poll: async () => {
+        session.lastPollAt = Date.now()
+        await persistWorkerSessionState(session)
+        return claimNextRunOrder(session)
+      },
+      onClaimEmpty: async (attempt, delayMs) => {
         await markWorkerProgress(session, "claim_empty")
+        await persistWorkerSessionState(session)
 
-        if (session.stats.claimed === 0) {
-          if (initialEmptyClaimAttempts < INITIAL_EMPTY_CLAIM_RETRY_LIMIT) {
-            initialEmptyClaimAttempts += 1
+        logger.info("Worker claim empty, retrying poll", {
+          feature: "worker",
+          domain: "run-loop",
+          step: "worker.claim.empty",
+          runId: session.runId,
+          workerId: session.workerId,
+          attempt,
+          nextPollDelayMs: delayMs
+        })
 
-            workerLog(session, "warn", "claim_empty_retry", {
-              attempt: initialEmptyClaimAttempts,
-              max_attempts: INITIAL_EMPTY_CLAIM_RETRY_LIMIT
-            })
+        workerLog(session, "log", "worker.claim.empty", {
+          attempt,
+          next_poll_delay_ms: delayMs
+        })
+      },
+      onRetry: async (attempt, delayMs, signal) => {
+        session.lastError = signal.message
+        await persistWorkerSessionState(session)
 
-            await sleep(INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS)
-            continue
-          }
+        logger.warn("Worker polling retry scheduled", {
+          feature: "worker",
+          domain: "run-loop",
+          step: "worker.poll.retry",
+          runId: session.runId,
+          workerId: session.workerId,
+          attempt,
+          status: signal.status,
+          nextRetryDelayMs: delayMs,
+          error: signal.message
+        })
+
+        workerLog(session, "warn", "worker.poll.retry", {
+          attempt,
+          status: signal.status,
+          next_retry_delay_ms: delayMs,
+          error: signal.message
+        })
+      },
+      onClaimed: async (claimed) => {
+        session.lastClaimAt = Date.now()
+        session.lastError = ""
+        session.stats.claimed += 1
+
+        const activeRunOrderId = claimed.runOrderId || `${Date.now()}`
+        session.progress.activeOrder = {
+          runOrderId: activeRunOrderId,
+          identifier: claimed.order?.id || "",
+          marketplace: claimed.order?.marketplace || "",
+          startedAt: Date.now()
         }
 
-        break
+        await persistWorkerSessionState(session)
+
+        await markWorkerProgress(session, "claim_order", {
+          run_order_id: activeRunOrderId,
+          identifier: session.progress.activeOrder.identifier,
+          marketplace: session.progress.activeOrder.marketplace
+        })
+
+        const outcome = await processClaimedRunOrder(session, claimed, settings)
+        session.stats.processed += 1
+
+        if (outcome.ok) {
+          session.stats.success += 1
+        } else if (outcome.status === "timed_out") {
+          session.stats.timed_out += 1
+        } else {
+          session.stats.failed += 1
+        }
+
+        await markWorkerProgress(session, "run_order_finished", {
+          run_order_id: activeRunOrderId,
+          identifier: session.progress.activeOrder?.identifier || "",
+          marketplace: session.progress.activeOrder?.marketplace || "",
+          status: outcome.status
+        })
+
+        session.progress.activeOrder = null
+        await persistWorkerSessionState(session)
       }
+    })
 
-      initialEmptyClaimAttempts = 0
-      session.stats.claimed += 1
+    await markWorkerSessionStopped(session, loopResult.stopReason)
 
-      const activeRunOrderId = claimed.runOrderId || `${Date.now()}`
-      session.progress.activeOrder = {
-        runOrderId: activeRunOrderId,
-        identifier: claimed.order?.id || "",
-        marketplace: claimed.order?.marketplace || "",
-        startedAt: Date.now()
+    if (loopResult.stopReason === "run_terminal") {
+      const completion = await completeRunIfNeeded(session)
+      if (!completion.ok) {
+        const completionDetail =
+          "statusText" in completion
+            ? extractWorkerApiErrorDetail(completion)
+            : { code: "", message: "" }
+        workerLog(session, "warn", "run_complete_failed", {
+          status: completion.status,
+          error_code: completionDetail.code || null,
+          error_message: completionDetail.message || null
+        })
       }
-
-      await markWorkerProgress(session, "claim_order", {
-        run_order_id: activeRunOrderId,
-        identifier: session.progress.activeOrder.identifier,
-        marketplace: session.progress.activeOrder.marketplace
-      })
-
-      const outcome = await processClaimedRunOrder(session, claimed, settings)
-      session.stats.processed += 1
-
-      if (outcome.ok) {
-        session.stats.success += 1
-      } else if (outcome.status === "timed_out") {
-        session.stats.timed_out += 1
-      } else {
-        session.stats.failed += 1
-      }
-
-      await markWorkerProgress(session, "run_order_finished", {
-        run_order_id: activeRunOrderId,
-        identifier: session.progress.activeOrder?.identifier || "",
-        marketplace: session.progress.activeOrder?.marketplace || "",
-        status: outcome.status
-      })
-
-      session.progress.activeOrder = null
     }
 
-    const completion = await completeRunIfNeeded(session)
-    if (!completion.ok) {
-      const completionDetail =
-        "statusText" in completion
-          ? extractWorkerApiErrorDetail(completion)
-          : { code: "", message: "" }
-      workerLog(session, "warn", "run_complete_failed", {
-        status: completion.status,
-        error_code: completionDetail.code || null,
-        error_message: completionDetail.message || null
-      })
-    }
+    logger.info("Worker loop stopped", {
+      feature: "worker",
+      domain: "run-loop",
+      step: "worker.loop.stop",
+      runId: session.runId,
+      workerId: session.workerId,
+      stopReason: loopResult.stopReason
+    })
+
+    workerLog(session, "log", "worker.loop.stop", {
+      stop_reason: loopResult.stopReason
+    })
 
     await sendBridgeWorkerEvent(session.sourceTabId, "run_finished", {
       run_id: session.runId,
       worker_id: session.workerId,
       ok: true,
-      stats: session.stats
+      stats: session.stats,
+      stop_reason: loopResult.stopReason
     })
 
     workerLog(session, "log", "run_finished", {
@@ -1157,18 +1428,21 @@ const runWorkerLoop = async (
   }
 }
 
-export const startRunWorker = async (args: {
+const startRunWorkerInternal = async (args: {
   message: RuntimeRunWorkerRequest | RuntimeSingleRequest
   senderTabId?: number | null
   settings: PowermaxxSettings
+  resumeState?: PersistedWorkerState | null
 }) => {
-  const { message, senderTabId, settings } = args
+  const { message, senderTabId, settings, resumeState } = args
 
   const token = settings.auth.token || ""
   const baseUrl = settings.auth.baseUrl || ""
-  const runId = normalizeWorkerRunId(message.runId || message.run_id)
+  const runId = normalizeWorkerRunId(
+    message.runId || message.run_id || resumeState?.run_id
+  )
   const workerId = normalizeWorkerId(
-    message.workerId || message.worker_id,
+    message.workerId || message.worker_id || resumeState?.worker_id,
     senderTabId
   )
 
@@ -1184,6 +1458,66 @@ export const startRunWorker = async (args: {
   }
 
   if (!token) {
+    if (resumeState) {
+      const failedSession: WorkerSession = {
+        key: `${runId}:${workerId}`,
+        runId,
+        workerId,
+        token,
+        baseUrl,
+        mode: normalizeWorkerMode(message.mode || resumeState.mode),
+        action: normalizeWorkerAction(message.action || resumeState.action),
+        apiPaths: buildWorkerApiPaths(resumeState.api_paths || {}),
+        completeOnFinish: Boolean(resumeState.complete_on_finish),
+        heartbeatIntervalMs: normalizePositiveInt(
+          resumeState.heartbeat_ms,
+          DEFAULT_WORKER_HEARTBEAT_MS,
+          5000,
+          30000
+        ),
+        orderTimeoutMs: normalizePositiveInt(
+          resumeState.order_timeout_ms,
+          DEFAULT_WORKER_ORDER_TIMEOUT_MS,
+          60000,
+          600000
+        ),
+        requestTimeoutMs: normalizePositiveInt(
+          resumeState.request_timeout_ms,
+          DEFAULT_WORKER_REQUEST_TIMEOUT_MS,
+          5000,
+          120000
+        ),
+        stallDetectionMs: normalizePositiveInt(
+          resumeState.stall_detection_ms,
+          DEFAULT_WORKER_STALL_DETECTION_MS,
+          MIN_WORKER_STALL_DETECTION_MS,
+          MAX_WORKER_STALL_DETECTION_MS
+        ),
+        sourceTabId: resumeState.source_tab_id || null,
+        extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
+        stopRequested: false,
+        stopReason: "fatal_config",
+        lastClaimAt: resumeState.last_claim_at || null,
+        lastPollAt: Date.now(),
+        lastError: "Sesi login belum tersedia untuk resume worker.",
+        reportedOrders: new Set(),
+        progress: {
+          lastProgressAt: Date.now(),
+          stallReportedAt: null,
+          activeOrder: null
+        },
+        stats: resumeState.stats || {
+          claimed: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          timed_out: 0,
+          report_failed: 0
+        }
+      }
+      await persistWorkerSessionState(failedSession)
+    }
+
     return {
       ok: false,
       error: "Sesi login belum tersedia. Login dulu di popup.",
@@ -1195,6 +1529,66 @@ export const startRunWorker = async (args: {
   }
 
   if (!baseUrl) {
+    if (resumeState) {
+      const failedSession: WorkerSession = {
+        key: `${runId}:${workerId}`,
+        runId,
+        workerId,
+        token,
+        baseUrl,
+        mode: normalizeWorkerMode(message.mode || resumeState.mode),
+        action: normalizeWorkerAction(message.action || resumeState.action),
+        apiPaths: buildWorkerApiPaths(resumeState.api_paths || {}),
+        completeOnFinish: Boolean(resumeState.complete_on_finish),
+        heartbeatIntervalMs: normalizePositiveInt(
+          resumeState.heartbeat_ms,
+          DEFAULT_WORKER_HEARTBEAT_MS,
+          5000,
+          30000
+        ),
+        orderTimeoutMs: normalizePositiveInt(
+          resumeState.order_timeout_ms,
+          DEFAULT_WORKER_ORDER_TIMEOUT_MS,
+          60000,
+          600000
+        ),
+        requestTimeoutMs: normalizePositiveInt(
+          resumeState.request_timeout_ms,
+          DEFAULT_WORKER_REQUEST_TIMEOUT_MS,
+          5000,
+          120000
+        ),
+        stallDetectionMs: normalizePositiveInt(
+          resumeState.stall_detection_ms,
+          DEFAULT_WORKER_STALL_DETECTION_MS,
+          MIN_WORKER_STALL_DETECTION_MS,
+          MAX_WORKER_STALL_DETECTION_MS
+        ),
+        sourceTabId: resumeState.source_tab_id || null,
+        extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
+        stopRequested: false,
+        stopReason: "fatal_config",
+        lastClaimAt: resumeState.last_claim_at || null,
+        lastPollAt: Date.now(),
+        lastError: "Base URL belum diatur untuk resume worker.",
+        reportedOrders: new Set(),
+        progress: {
+          lastProgressAt: Date.now(),
+          stallReportedAt: null,
+          activeOrder: null
+        },
+        stats: resumeState.stats || {
+          claimed: 0,
+          processed: 0,
+          success: 0,
+          failed: 0,
+          timed_out: 0,
+          report_failed: 0
+        }
+      }
+      await persistWorkerSessionState(failedSession)
+    }
+
     return {
       ok: false,
       error: "Base URL belum diatur.",
@@ -1222,29 +1616,38 @@ export const startRunWorker = async (args: {
   }
 
   const apiOverrides = {
+    ...(isObject(resumeState?.api_paths) ? resumeState?.api_paths : {}),
     ...(isObject(message.apiPaths) ? message.apiPaths : {}),
     ...(isObject(message.api_paths) ? message.api_paths : {})
   }
 
   const completeOnFinish =
-    Boolean(message.completeOnFinish) || Boolean(message.complete_on_finish)
+    Boolean(message.completeOnFinish) ||
+    Boolean(message.complete_on_finish) ||
+    Boolean(resumeState?.complete_on_finish)
 
   const heartbeatIntervalMs = normalizePositiveInt(
-    message.heartbeatMs ?? message.heartbeat_interval_ms,
+    message.heartbeatMs ??
+      message.heartbeat_interval_ms ??
+      resumeState?.heartbeat_ms,
     DEFAULT_WORKER_HEARTBEAT_MS,
     5000,
     30000
   )
 
   const orderTimeoutMs = normalizePositiveInt(
-    message.orderTimeoutMs ?? message.order_timeout_ms,
+    message.orderTimeoutMs ??
+      message.order_timeout_ms ??
+      resumeState?.order_timeout_ms,
     DEFAULT_WORKER_ORDER_TIMEOUT_MS,
     60000,
     600000
   )
 
   const requestTimeoutMs = normalizePositiveInt(
-    message.requestTimeoutMs ?? message.request_timeout_ms,
+    message.requestTimeoutMs ??
+      message.request_timeout_ms ??
+      resumeState?.request_timeout_ms,
     DEFAULT_WORKER_REQUEST_TIMEOUT_MS,
     5000,
     120000
@@ -1256,14 +1659,16 @@ export const startRunWorker = async (args: {
   )
 
   const stallDetectionMs = normalizePositiveInt(
-    message.stallDetectionMs ?? message.stall_detection_ms,
+    message.stallDetectionMs ??
+      message.stall_detection_ms ??
+      resumeState?.stall_detection_ms,
     computedStallTimeoutMs,
     MIN_WORKER_STALL_DETECTION_MS,
     MAX_WORKER_STALL_DETECTION_MS
   )
 
-  const mode = normalizeWorkerMode(message.mode)
-  const action = normalizeWorkerAction(message.action)
+  const mode = normalizeWorkerMode(message.mode || resumeState?.mode)
+  const action = normalizeWorkerAction(message.action || resumeState?.action)
 
   const session: WorkerSession = {
     key: workerKey,
@@ -1279,8 +1684,16 @@ export const startRunWorker = async (args: {
     orderTimeoutMs,
     requestTimeoutMs,
     stallDetectionMs,
-    sourceTabId: senderTabId || null,
+    sourceTabId:
+      senderTabId !== undefined
+        ? senderTabId
+        : resumeState?.source_tab_id ?? null,
     extensionVersion: chrome.runtime.getManifest()?.version || "unknown",
+    stopRequested: false,
+    stopReason: null,
+    lastClaimAt: resumeState?.last_claim_at ?? null,
+    lastPollAt: resumeState?.last_poll_at ?? null,
+    lastError: String(resumeState?.last_error || "").trim(),
     reportedOrders: await loadPersistedReportedOrders(runId),
     progress: {
       lastProgressAt: Date.now(),
@@ -1288,17 +1701,18 @@ export const startRunWorker = async (args: {
       activeOrder: null
     },
     stats: {
-      claimed: 0,
-      processed: 0,
-      success: 0,
-      failed: 0,
-      timed_out: 0,
-      report_failed: 0
+      claimed: Number(resumeState?.stats?.claimed || 0),
+      processed: Number(resumeState?.stats?.processed || 0),
+      success: Number(resumeState?.stats?.success || 0),
+      failed: Number(resumeState?.stats?.failed || 0),
+      timed_out: Number(resumeState?.stats?.timed_out || 0),
+      report_failed: Number(resumeState?.stats?.report_failed || 0)
     }
   }
 
   activeRunWorkerByKey.set(workerKey, session)
   activeRunWorkerByRunId.set(runId, workerKey)
+  await persistWorkerSessionState(session)
 
   // Delay worker start to ensure runtime response is posted first.
   setTimeout(() => {
@@ -1322,6 +1736,9 @@ export const startRunWorker = async (args: {
           error_code: errorCode,
           error_message: errorMessage
         })
+
+        session.lastError = errorMessage
+        await markWorkerSessionStopped(session, "unrecoverable_error")
 
         await sendBridgeWorkerEvent(session.sourceTabId, "run_failed", {
           run_id: session.runId,
@@ -1348,5 +1765,112 @@ export const startRunWorker = async (args: {
     runId,
     workerId,
     mode
+  }
+}
+
+export const startRunWorker = async (args: {
+  message: RuntimeRunWorkerRequest | RuntimeSingleRequest
+  senderTabId?: number | null
+  settings: PowermaxxSettings
+}) => startRunWorkerInternal(args)
+
+export const stopRunWorker = async (args: { runId: string }) => {
+  const runId = normalizeWorkerRunId(args.runId)
+  const workerKey = activeRunWorkerByRunId.get(runId)
+
+  if (!workerKey) {
+    return {
+      ok: false,
+      error: "Worker run tidak ditemukan atau sudah berhenti."
+    }
+  }
+
+  const session = activeRunWorkerByKey.get(workerKey)
+  if (!session) {
+    return {
+      ok: false,
+      error: "Worker session tidak ditemukan."
+    }
+  }
+
+  session.stopRequested = true
+  session.stopReason = "user_stop"
+  await persistWorkerSessionState(session)
+
+  return {
+    ok: true,
+    error: "",
+    runId: session.runId,
+    workerId: session.workerId
+  }
+}
+
+export const resumePersistedRunWorkers = async (args: {
+  settings: PowermaxxSettings
+}) => {
+  const { settings } = args
+  const registry = pruneWorkerRunStateRegistry(
+    await loadWorkerRunStateRegistry()
+  )
+  await saveWorkerRunStateRegistry(registry)
+
+  const resumableSessions = selectResumableRunStates(Object.values(registry))
+
+  let resumed = 0
+  let skipped = 0
+
+  for (const entry of resumableSessions) {
+    const runId = normalizeWorkerRunId(entry.run_id)
+    if (!runId) {
+      skipped += 1
+      continue
+    }
+
+    if (activeRunWorkerByRunId.has(runId)) {
+      skipped += 1
+      continue
+    }
+
+    const response = await startRunWorkerInternal({
+      message: {
+        type: "POWERMAXX_RUN_WORKER",
+        action: entry.action,
+        mode: entry.mode,
+        runId: entry.run_id,
+        workerId: entry.worker_id,
+        apiPaths: entry.api_paths || {},
+        heartbeatMs: entry.heartbeat_ms,
+        orderTimeoutMs: entry.order_timeout_ms,
+        requestTimeoutMs: entry.request_timeout_ms,
+        stallDetectionMs: entry.stall_detection_ms,
+        completeOnFinish: entry.complete_on_finish,
+        orders: []
+      },
+      senderTabId: entry.source_tab_id,
+      settings,
+      resumeState: entry
+    })
+
+    if (response.ok) {
+      resumed += 1
+      continue
+    }
+
+    skipped += 1
+  }
+
+  if (resumed > 0 || skipped > 0) {
+    logger.info("Worker resume from storage executed", {
+      feature: "worker",
+      domain: "resume",
+      step: "resume.persisted",
+      resumed,
+      skipped
+    })
+  }
+
+  return {
+    resumed,
+    skipped
   }
 }

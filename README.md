@@ -33,6 +33,7 @@ npm run dev
 ```
 
 Load unpacked extension dari folder:
+
 - `build/chrome-mv3-dev`
 
 ## Build Production
@@ -71,19 +72,34 @@ npm run package
 8. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `run_started` sampai `run_finished` muncul.
 9. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
 10. Verifikasi response status dan event bridge untuk mode web integration.
+11. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
+
+- `worker.loop.start`
+- `worker.claim.empty`
+- `worker.poll.retry`
+- `worker.loop.stop` (dengan `stop_reason`)
 
 ## Regression Guard
 
 1. Jalankan static guard kontrak bridge:
    - `npm run check:bridge-regression`
-2. Lanjutkan dengan build check:
+2. Jalankan simulasi hardening worker loop:
+   - `npm run check:worker-durability`
+3. Lanjutkan dengan build check:
    - `npx tsc --noEmit`
    - `npm run build`
-3. Lihat checklist browser E2E di:
+4. Lihat checklist browser E2E di:
    - `docs/bridge-regression-checklist.md`
    - `docs/legacy-parity-cutover-checklist.md`
-4. Jalankan verifikasi agregat sekali perintah:
+5. Jalankan verifikasi agregat sekali perintah:
    - `npm run verify`
+
+## Worker Loop Durability
+
+- Worker mode tidak berhenti hanya karena `claim-next` kosong selama run belum terminal.
+- Empty claim diperlakukan sebagai idle state dan dipoll ulang dengan backoff 2-5 detik (capped).
+- Error transient polling (`429`, `5xx`, timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
+- Context run aktif disimpan di `chrome.storage.local` (`run_id`, `worker_id`, `last_claim_at`, `last_poll_at`, `last_error`, `stop_reason`) agar service worker bisa auto-resume saat startup/reload.
 
 ## Troubleshooting
 

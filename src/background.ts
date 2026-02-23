@@ -4,7 +4,8 @@ import type {
   RuntimeBulkRequest,
   RuntimeRequestMessage,
   RuntimeRunWorkerRequest,
-  RuntimeSingleRequest
+  RuntimeSingleRequest,
+  RuntimeStopRunWorkerRequest
 } from "~src/core/messages/contracts"
 import { normalizeBridgeAction } from "~src/core/messages/guards"
 import { normalizeBaseUrl, SETTINGS_KEY } from "~src/core/settings/schema"
@@ -36,7 +37,11 @@ import {
   loadViewerPayload,
   saveViewerPayload
 } from "~src/features/viewer/shared/storage"
-import { startRunWorker } from "~src/features/worker/background/run-worker"
+import {
+  resumePersistedRunWorkers,
+  startRunWorker,
+  stopRunWorker
+} from "~src/features/worker/background/run-worker"
 
 const syncBridgeFromSettings = async () => {
   const settings = await loadSettings()
@@ -47,6 +52,20 @@ const syncBridgeFromSettings = async () => {
   ]
 
   await ensureBridgeForBaseUrls(urls)
+}
+
+const resumeWorkersFromStorage = async () => {
+  try {
+    const settings = await loadSettings()
+    await resumePersistedRunWorkers({ settings })
+  } catch (error) {
+    logger.warn("Failed to resume persisted workers", {
+      feature: "worker",
+      domain: "resume",
+      step: "bootstrap",
+      error: String((error as Error)?.message || error)
+    })
+  }
 }
 
 const isUnauthenticated = (
@@ -636,6 +655,18 @@ const handleRunWorker = async (
   })
 }
 
+const handleStopRunWorker = async (message: RuntimeStopRunWorkerRequest) => {
+  const runId = String(message.runId || message.run_id || "").trim()
+  if (!runId) {
+    return {
+      ok: false,
+      error: "run_id wajib diisi untuk stop worker."
+    }
+  }
+
+  return stopRunWorker({ runId })
+}
+
 const handleBulk = async (
   message: RuntimeBulkRequest,
   senderTabId?: number | null
@@ -760,6 +791,11 @@ const onRuntimeMessage = (
     return true
   }
 
+  if (message.type === "POWERMAXX_STOP_RUN_WORKER") {
+    reply(handleStopRunWorker(message))
+    return true
+  }
+
   if (message.type === "POWERMAXX_BULK") {
     reply(handleBulk(message, senderTabId))
     return true
@@ -770,10 +806,12 @@ chrome.runtime.onMessage.addListener(onRuntimeMessage)
 
 chrome.runtime.onInstalled.addListener(() => {
   void syncBridgeFromSettings()
+  void resumeWorkersFromStorage()
 })
 
 chrome.runtime.onStartup.addListener(() => {
   void syncBridgeFromSettings()
+  void resumeWorkersFromStorage()
 })
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -787,6 +825,7 @@ bindMarketplaceTabTrackers()
 bindBridgeAutoInjection()
 
 void syncBridgeFromSettings()
+void resumeWorkersFromStorage()
 
 logger.info("Powermaxx background initialized", {
   feature: "background",

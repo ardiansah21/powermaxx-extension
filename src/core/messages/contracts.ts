@@ -137,6 +137,12 @@ export interface RuntimeRunWorkerRequest {
   sourceUrl?: string
 }
 
+export interface RuntimeStopRunWorkerRequest {
+  type: "POWERMAXX_STOP_RUN_WORKER"
+  runId?: string
+  run_id?: string
+}
+
 export interface RuntimePopupFetchSendRequest {
   type: "POWERMAXX_POPUP_FETCH_SEND"
   actionMode: ActionMode
@@ -176,6 +182,7 @@ export type RuntimeRequestMessage =
   | RuntimeSingleRequest
   | RuntimeBulkRequest
   | RuntimeRunWorkerRequest
+  | RuntimeStopRunWorkerRequest
   | RuntimePopupFetchSendRequest
   | RuntimePopupFetchOnlyRequest
   | RuntimePopupFetchSendAwbRequest

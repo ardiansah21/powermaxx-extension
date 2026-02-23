@@ -9,7 +9,8 @@
     "build": "plasmo build",
     "package": "plasmo package",
     "check:bridge-regression": "node scripts/check-bridge-regression.mjs",
-    "verify": "npm run check:bridge-regression && npx tsc --noEmit && npm run build"
+    "check:worker-durability": "node scripts/test-worker-loop-durability.mjs",
+    "verify": "npm run check:bridge-regression && npm run check:worker-durability && npx tsc --noEmit && npm run build"
   },
   "dependencies": {
     "plasmo": "0.90.5",

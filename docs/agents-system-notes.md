@@ -36,5 +36,8 @@
 - Event worker/bulk juga dibroadcast ke runtime message internal (`POWERMAXX_INTERNAL_WORKER_EVENT`) untuk konsumsi UI tab operator.
 - Options page sekarang memakai section collapsible per domain (Auth, Shopee, Shopee AWB, TikTok, TikTok AWB) untuk mengurangi kepadatan form.
 - Worker loop dan bulk headless kini punya stall watchdog: jika tidak ada progress melewati threshold, extension kirim event `run_stalled` dengan konteks order aktif (`run_order_id`, `identifier`, `marketplace`), lalu `run_resumed` saat progress lanjut.
+- Worker loop kini menyimpan state aktif di `chrome.storage.local` (`pmxWorkerRunStateV1`) termasuk `run_id`, `worker_id`, `last_claim_at`, `last_poll_at`, `last_error`, `stop_reason`, lalu auto-resume saat background startup jika run masih aktif.
+- Empty `claim-next` diperlakukan sebagai idle poll (bukan terminal), dengan backoff 2-5 detik sampai backend mengembalikan run terminal atau ada user stop eksplisit.
+- Retry polling worker untuk status transient (`0`, `408`, `425`, `429`, `5xx`) menggunakan exponential backoff + jitter dan menghasilkan log observability terstruktur (`worker.loop.start`, `worker.claim.empty`, `worker.poll.retry`, `worker.loop.stop`).
 - Kasus run bulk stuck yang sempat muncul di UAT awal dipakai sebagai sinyal diagnosa untuk hardening backend stale recovery + auto reconcile scheduler; validasi ulang di extension tetap wajib dilakukan pada run baru mixed marketplace.
 - Backend kini menyediakan path observability run scheduler (`mp-update:scheduler-health`) dan reconcile periodik (`mp-update:reconcile-run --running`) untuk menutup run stale pada mode queue `sync`.
