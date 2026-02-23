@@ -15,6 +15,12 @@ const checks = [
       "run_order_finished",
       "run_finished",
       "run_failed",
+      "worker.loop.start",
+      "worker.claim.empty",
+      "worker.poll.retry",
+      "worker.loop.stop",
+      "idempotency_key",
+      "attempt_no",
       "error_code",
       "action_hint",
       "technical_error"

@@ -23,6 +23,7 @@ import type { PowermaxxSettings } from "~src/core/settings/schema"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import { executeFetchSendByOrder } from "~src/features/fetch-send/background/run-fetch-send"
 import {
+  computeRetryBackoffMs,
   isRetryablePollStatus,
   runDurableClaimLoop,
   selectResumableRunStates,
@@ -37,6 +38,10 @@ const DEFAULT_WORKER_STALL_DETECTION_MS = 240000
 const MIN_WORKER_STALL_DETECTION_MS = 60000
 const MAX_WORKER_STALL_DETECTION_MS = 900000
 const DEFAULT_WORKER_STALL_WATCHDOG_INTERVAL_MS = 10000
+const REPORT_RETRY_ATTEMPTS = 4
+const REPORT_RETRY_BACKOFF_BASE_MS = 750
+const REPORT_RETRY_BACKOFF_MAX_MS = 8000
+const REPORT_RETRY_JITTER_RATIO = 0.2
 const WORKER_REPORTED_STORAGE_KEY = "pmxWorkerReportedRunOrders"
 const WORKER_REPORTED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const WORKER_RUN_STATE_STORAGE_KEY = "pmxWorkerRunStateV1"
@@ -225,8 +230,6 @@ const toPersistedWorkerState = (
   stall_detection_ms: session.stallDetectionMs,
   source_tab_id: session.sourceTabId,
   extension_version: session.extensionVersion,
-  stats: { ...session.stats },
-  last_claim_at: session.lastClaimAt,
   last_poll_at: session.lastPollAt,
   last_error: session.lastError,
   stop_reason: session.stopReason,
@@ -419,18 +422,18 @@ interface WorkerSession {
 interface PersistedWorkerState {
   run_id: string
   worker_id: string
-  mode: "single" | "bulk"
-  action: BridgeAction
-  api_paths: ReturnType<typeof buildWorkerApiPaths>
-  complete_on_finish: boolean
-  heartbeat_ms: number
-  order_timeout_ms: number
-  request_timeout_ms: number
-  stall_detection_ms: number
-  source_tab_id: number | null
-  extension_version: string
-  stats: WorkerSession["stats"]
-  last_claim_at: number | null
+  mode?: "single" | "bulk"
+  action?: BridgeAction
+  api_paths?: ReturnType<typeof buildWorkerApiPaths>
+  complete_on_finish?: boolean
+  heartbeat_ms?: number
+  order_timeout_ms?: number
+  request_timeout_ms?: number
+  stall_detection_ms?: number
+  source_tab_id?: number | null
+  extension_version?: string
+  stats?: WorkerSession["stats"]
+  last_claim_at?: number | null
   last_poll_at: number | null
   last_error: string
   stop_reason: WorkerStopReason | null
@@ -561,6 +564,7 @@ const normalizeClaimedOrder = (
     return {
       hasOrder: false,
       runOrderId: "",
+      attemptNo: 0,
       order: null as NormalizedOrder | null,
       action: fallbackAction
     }
@@ -579,6 +583,7 @@ const normalizeClaimedOrder = (
     return {
       hasOrder: false,
       runOrderId: "",
+      attemptNo: 0,
       order: null,
       action: fallbackAction
     }
@@ -594,6 +599,11 @@ const normalizeClaimedOrder = (
   const runOrderId = String(
     runOrder.run_order_id || runOrder.runOrderId || runOrder.id || ""
   )
+  const parsedAttemptNo = Number(runOrder.attempt_no || runOrder.attemptNo || 0)
+  const attemptNo =
+    Number.isFinite(parsedAttemptNo) && parsedAttemptNo > 0
+      ? Math.trunc(parsedAttemptNo)
+      : 1
 
   const identifier = String(
     runOrder.marketplace_identifier ||
@@ -628,6 +638,7 @@ const normalizeClaimedOrder = (
     return {
       hasOrder: false,
       runOrderId,
+      attemptNo,
       order: null,
       action
     }
@@ -636,6 +647,7 @@ const normalizeClaimedOrder = (
   return {
     hasOrder: true,
     runOrderId,
+    attemptNo,
     action,
     order: {
       id: identifier,
@@ -796,6 +808,8 @@ const extractChangesFromFetchResult = (
 
 const buildRunOrderReportPayload = (args: {
   session: WorkerSession
+  runOrderId: string
+  attemptNo: number
   order: NormalizedOrder
   action: BridgeAction
   status: "success" | "timed_out" | "failed"
@@ -807,6 +821,8 @@ const buildRunOrderReportPayload = (args: {
 }) => {
   const {
     session,
+    runOrderId,
+    attemptNo,
     order,
     action,
     status,
@@ -836,9 +852,14 @@ const buildRunOrderReportPayload = (args: {
     (fetchResult?.fetchMeta as Record<string, unknown> | null) ||
     (fetchResult?.fetch_meta as Record<string, unknown> | null) ||
     null
+  const idempotencyKey = `${session.runId}:${runOrderId}:attempt:${Math.max(
+    1,
+    attemptNo
+  )}:${status}`
 
   return {
     status,
+    idempotency_key: idempotencyKey,
     error_code: errorCode,
     error_message: errorMessage,
     technical_error: technicalError,
@@ -850,6 +871,7 @@ const buildRunOrderReportPayload = (args: {
     meta: {
       worker_id: session.workerId,
       extension_version: session.extensionVersion,
+      attempt_no: Math.max(1, attemptNo),
       duration_ms: durationMs
     },
     marketplace: order.marketplace,
@@ -970,9 +992,13 @@ const sendHeartbeat = async (
 const reportRunOrder = async (
   session: WorkerSession,
   runOrderId: string,
+  attemptNo: number,
   payload: Record<string, unknown>
 ) => {
-  const dedupeKey = `${session.runId}:${runOrderId}`
+  const dedupeKey = `${session.runId}:${runOrderId}:attempt:${Math.max(
+    1,
+    attemptNo
+  )}`
   if (session.reportedOrders.has(dedupeKey)) {
     return {
       ok: true,
@@ -992,10 +1018,11 @@ const reportRunOrder = async (
     ...buildWorkerCanonicalMeta(session),
     run_order_id: runOrderId,
     runOrderId: runOrderId,
+    attempt_no: Math.max(1, attemptNo),
     ...payload
   }
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= REPORT_RETRY_ATTEMPTS; attempt += 1) {
     const response = await fetchJsonWithTimeout(
       url,
       {
@@ -1019,12 +1046,43 @@ const reportRunOrder = async (
       }
     }
 
-    const shouldRetry = [0, 408, 429].includes(response.status)
-    if (!shouldRetry || attempt >= 3) {
+    const shouldRetry = isRetryablePollStatus(response.status)
+    if (!shouldRetry || attempt >= REPORT_RETRY_ATTEMPTS) {
       break
     }
 
-    await sleep(400 * attempt)
+    const delayMs = computeRetryBackoffMs(attempt, Math.random, {
+      baseMs: REPORT_RETRY_BACKOFF_BASE_MS,
+      maxMs: REPORT_RETRY_BACKOFF_MAX_MS,
+      jitterRatio: REPORT_RETRY_JITTER_RATIO
+    })
+    const retryError = formatWorkerApiError("Report run order gagal", response)
+    session.lastError = retryError
+
+    logger.warn("Worker polling retry scheduled", {
+      feature: "worker",
+      domain: "run-loop",
+      step: "worker.poll.retry",
+      stage: "report",
+      runId: session.runId,
+      workerId: session.workerId,
+      runOrderId,
+      attempt,
+      status: response.status,
+      nextRetryDelayMs: delayMs,
+      error: retryError
+    })
+
+    workerLog(session, "warn", "worker.poll.retry", {
+      stage: "report",
+      run_order_id: runOrderId,
+      attempt,
+      status: response.status,
+      next_retry_delay_ms: delayMs,
+      error: retryError
+    })
+
+    await sleep(delayMs)
   }
 
   return {
@@ -1071,6 +1129,7 @@ const processClaimedRunOrder = async (
 ) => {
   const startedAt = Date.now()
   const runOrderId = claimed.runOrderId || `${Date.now()}`
+  const attemptNo = Math.max(1, Number(claimed.attemptNo || 1))
 
   const order = claimed.order
   if (!order) {
@@ -1087,6 +1146,7 @@ const processClaimedRunOrder = async (
     run_id: session.runId,
     worker_id: session.workerId,
     run_order_id: runOrderId,
+    attempt_no: attemptNo,
     identifier: order.id,
     marketplace: order.marketplace,
     action: claimed.action
@@ -1103,6 +1163,7 @@ const processClaimedRunOrder = async (
       }).then((heartbeatResponse) => {
         void sendBridgeWorkerEvent(session.sourceTabId, "run_order_heartbeat", {
           run_order_id: runOrderId,
+          attempt_no: attemptNo,
           worker_id: session.workerId,
           run_id: session.runId,
           ok: heartbeatResponse.ok,
@@ -1130,6 +1191,8 @@ const processClaimedRunOrder = async (
 
     const reportPayload = buildRunOrderReportPayload({
       session,
+      runOrderId,
+      attemptNo,
       order,
       action: claimed.action,
       status,
@@ -1146,6 +1209,7 @@ const processClaimedRunOrder = async (
     const reportResponse = await reportRunOrder(
       session,
       runOrderId,
+      attemptNo,
       reportPayload
     )
 
@@ -1157,6 +1221,7 @@ const processClaimedRunOrder = async (
       run_id: session.runId,
       worker_id: session.workerId,
       run_order_id: runOrderId,
+      attempt_no: attemptNo,
       status,
       error_code: errorCode,
       error_message: errorMessage,
@@ -1192,8 +1257,11 @@ const processClaimedRunOrder = async (
     const reportResponse = await reportRunOrder(
       session,
       runOrderId,
+      attemptNo,
       buildRunOrderReportPayload({
         session,
+        runOrderId,
+        attemptNo,
         order,
         action: claimed.action,
         status,
@@ -1213,6 +1281,7 @@ const processClaimedRunOrder = async (
       run_id: session.runId,
       worker_id: session.workerId,
       run_order_id: runOrderId,
+      attempt_no: attemptNo,
       status,
       error_code: errorCode,
       error_message: errorMessage,
@@ -1404,11 +1473,15 @@ const runWorkerLoop = async (
       step: "worker.loop.stop",
       runId: session.runId,
       workerId: session.workerId,
-      stopReason: loopResult.stopReason
+      stopReason: loopResult.stopReason,
+      lastError: session.lastError || null,
+      stats: session.stats
     })
 
     workerLog(session, "log", "worker.loop.stop", {
-      stop_reason: loopResult.stopReason
+      stop_reason: loopResult.stopReason,
+      last_error: session.lastError || null,
+      stats: session.stats
     })
 
     await sendBridgeWorkerEvent(session.sourceTabId, "run_finished", {
@@ -1834,8 +1907,8 @@ export const resumePersistedRunWorkers = async (args: {
     const response = await startRunWorkerInternal({
       message: {
         type: "POWERMAXX_RUN_WORKER",
-        action: entry.action,
-        mode: entry.mode,
+        action: entry.action || "update_both",
+        mode: entry.mode || "bulk",
         runId: entry.run_id,
         workerId: entry.worker_id,
         apiPaths: entry.api_paths || {},
