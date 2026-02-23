@@ -58,3 +58,18 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 1. Uji Shopee dan TikTok dengan akun seller yang benar-benar aktif.
 2. Uji skenario token expired (`401/403/419`) dan pastikan sesi lokal dibersihkan.
 3. Uji dua extension terpasang bersamaan (legacy + baru) untuk memastikan coexistence guard menahan duplicate run.
+
+## Hasil UAT Terakhir (2026-02-23)
+
+1. `npm run verify` pass.
+2. Popup flow pass di seller aktif:
+   - Tokopedia/TikTok Shop: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
+   - Shopee: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
+3. Bridge mode pass:
+   - `single`: response envelope kompatibel legacy + event `run_started`.
+   - `bulk`: mixed Shopee + TikTok sukses setelah normalisasi `id_type`/`idType`.
+   - `worker`: response envelope kompatibel legacy + event lifecycle.
+4. Session guard pass:
+   - Setelah `Logout`, request popup ditolak dengan error terstruktur.
+   - Setelah login ulang email/password, flow kembali sukses.
+5. Legacy extension sudah dinonaktifkan untuk fase cutover.
