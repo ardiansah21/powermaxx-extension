@@ -219,6 +219,7 @@ function PopupPage() {
   const [status, setStatus] = useState("")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [pendingOrderUrl, setPendingOrderUrl] = useState("")
+  const [pendingOrderNo, setPendingOrderNo] = useState("")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
 
@@ -231,9 +232,33 @@ function PopupPage() {
     setStatus("")
   }
 
-  const setOrderUrlIfAny = (value?: string) => {
-    const next = String(value || "").trim()
-    setPendingOrderUrl(next)
+  const extractOrderNoFromUrl = (value?: string) => {
+    const raw = String(value || "").trim()
+    if (!raw) return ""
+
+    try {
+      const parsed = new URL(raw)
+      const queryOrderNo = String(parsed.searchParams.get("order_no") || "").trim()
+      if (queryOrderNo) return queryOrderNo
+
+      const segments = parsed.pathname
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+
+      return String(segments[segments.length - 1] || "").trim()
+    } catch (_error) {
+      return ""
+    }
+  }
+
+  const setOrderReference = (args?: { url?: string; orderNo?: string }) => {
+    const nextUrl = String(args?.url || "").trim()
+    const explicitOrderNo = String(args?.orderNo || "").trim()
+    const nextOrderNo = explicitOrderNo || extractOrderNoFromUrl(nextUrl)
+
+    setPendingOrderUrl(nextUrl)
+    setPendingOrderNo(nextOrderNo)
   }
 
   const canLogin = useMemo(
@@ -305,7 +330,7 @@ function PopupPage() {
 
     try {
       setBusyLogin(true)
-      setOrderUrlIfAny("")
+      setOrderReference()
       setStatusMessage("Meminta host permission...", "neutral")
 
       const granted = await ensureHostPermission(normalizedBaseUrl)
@@ -348,7 +373,7 @@ function PopupPage() {
   const handleLogout = async () => {
     try {
       setBusyLogin(true)
-      setOrderUrlIfAny("")
+      setOrderReference()
       setStatusMessage("Logout...", "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
         type: "POWERMAXX_POPUP_LOGOUT"
@@ -383,7 +408,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
-      setOrderUrlIfAny("")
+      setOrderReference()
       setStatusMessage(`Menjalankan ${actionMode}...`, "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
         type: "POWERMAXX_POPUP_FETCH_SEND",
@@ -395,11 +420,14 @@ function PopupPage() {
         return
       }
 
-      setOrderUrlIfAny(response.openUrl)
+      setOrderReference({
+        url: response.openUrl,
+        orderNo: response.orderId
+      })
 
       setStatusMessage(
         response.orderId
-          ? `Berhasil. Order: ${response.orderId}`
+          ? `Berhasil. Order No: ${response.orderId}`
           : "Berhasil kirim data.",
         "success"
       )
@@ -450,7 +478,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
-      setOrderUrlIfAny("")
+      setOrderReference()
       setStatusMessage("Menjalankan AWB...", "neutral")
 
       const response = await sendRuntimeMessage<RuntimeResult>({
@@ -496,7 +524,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
-      setOrderUrlIfAny("")
+      setOrderReference()
       setStatusMessage("Menjalankan fetch + send + AWB...", "neutral")
 
       const response = await sendRuntimeMessage<RuntimeResult>({
@@ -510,7 +538,10 @@ function PopupPage() {
         await chrome.tabs.create({ url: response.awb.openUrl })
       }
 
-      setOrderUrlIfAny(response?.openUrl)
+      setOrderReference({
+        url: response?.openUrl,
+        orderNo: response?.orderId
+      })
 
       if (fetchOk && awbOk) {
         const awbLabel = response.awb?.downloaded
@@ -520,7 +551,7 @@ function PopupPage() {
           : "AWB diproses."
         setStatusMessage(
           response.orderId
-            ? `Sukses. Order: ${response.orderId}. ${awbLabel}`
+            ? `Sukses. Order No: ${response.orderId}. ${awbLabel}`
             : `Sukses. ${awbLabel}`,
           "success"
         )
@@ -800,7 +831,7 @@ function PopupPage() {
             }}
             disabled={busyLogin || busyAction}
             onClick={() => chrome.tabs.create({ url: pendingOrderUrl })}>
-            Open Order
+            {pendingOrderNo ? `Open Order No ${pendingOrderNo}` : "Open Order"}
           </button>
         </div>
       )}
