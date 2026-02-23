@@ -30,6 +30,7 @@ import { startRunWorker } from "~src/features/worker/background/run-worker"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
+  formatExportFailureMessage,
   sendExport
 } from "~src/features/fetch-send/background/export-client"
 
@@ -542,7 +543,7 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
     ok: Boolean(exportResult.ok),
     error: exportResult.ok
       ? ""
-      : `Export gagal ${exportResult.status}: ${exportResult.statusText || "Error"}`,
+      : formatExportFailureMessage(exportResult),
     mode: "single",
     count: 1,
     running: false,

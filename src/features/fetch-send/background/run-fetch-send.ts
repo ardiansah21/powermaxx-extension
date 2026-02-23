@@ -3,6 +3,7 @@ import {
   MARKETPLACE_TAB_URL_PATTERNS,
   buildOrderUrl,
   detectMarketplaceFromUrl,
+  isMarketplaceOrderDetailUrl,
   isMarketplaceUrl
 } from "~src/core/marketplace"
 import type {
@@ -21,6 +22,7 @@ import { clearAuthSession } from "~src/core/settings/storage"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
+  formatExportFailureMessage,
   sendExport,
   type FetchResultPayload
 } from "~src/features/fetch-send/background/export-client"
@@ -29,6 +31,27 @@ import { runMarketplaceFetchInPage } from "~src/features/fetch-send/content/page
 
 let lastMarketplaceTabId: number | null = null
 let lastMarketplaceTabUrl = ""
+
+const getMarketplaceContentScriptFiles = () => {
+  const manifest = chrome.runtime.getManifest()
+  const allFiles = (manifest.content_scripts || []).flatMap((entry) => entry.js || [])
+  const normalized = allFiles.filter((file) => typeof file === "string" && file.trim())
+  const marketplaceOnly = normalized.filter((file) => file.includes("marketplace"))
+  const picked = marketplaceOnly.length ? marketplaceOnly : normalized
+  return Array.from(new Set(picked))
+}
+
+export const ensureMarketplaceContentScriptInjected = async (tabId: number) => {
+  const files = getMarketplaceContentScriptFiles()
+  if (!files.length) {
+    throw new Error("File content script marketplace tidak ditemukan di manifest.")
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files
+  })
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -92,7 +115,7 @@ const rememberMarketplaceTab = async (tabId?: number | null) => {
 
   try {
     const tab = await chrome.tabs.get(tabId)
-    if (!tab?.id || !isMarketplaceUrl(tab.url || "")) return
+    if (!tab?.id || !isMarketplaceOrderDetailUrl(tab.url || "")) return
 
     lastMarketplaceTabId = tab.id
     lastMarketplaceTabUrl = tab.url || ""
@@ -102,6 +125,8 @@ const rememberMarketplaceTab = async (tabId?: number | null) => {
 }
 
 export const resolveMarketplaceTab = async () => {
+  let activeMarketplaceFallback: { tabId: number; url: string } | null = null
+
   try {
     const activeTabs = await chrome.tabs.query({
       active: true,
@@ -111,9 +136,16 @@ export const resolveMarketplaceTab = async () => {
     const activeTab = Array.isArray(activeTabs) ? activeTabs[0] : null
 
     if (activeTab?.id && isMarketplaceUrl(activeTab.url || "")) {
-      lastMarketplaceTabId = activeTab.id
-      lastMarketplaceTabUrl = activeTab.url || ""
-      return { tabId: activeTab.id, url: activeTab.url || "" }
+      if (isMarketplaceOrderDetailUrl(activeTab.url || "")) {
+        lastMarketplaceTabId = activeTab.id
+        lastMarketplaceTabUrl = activeTab.url || ""
+        return { tabId: activeTab.id, url: activeTab.url || "" }
+      }
+
+      activeMarketplaceFallback = {
+        tabId: activeTab.id,
+        url: activeTab.url || ""
+      }
     }
   } catch (_error) {
     // ignore
@@ -134,14 +166,37 @@ export const resolveMarketplaceTab = async () => {
 
   try {
     const tabs = await chrome.tabs.query({ url: MARKETPLACE_TAB_URL_PATTERNS })
-    const first = Array.isArray(tabs) ? tabs.find((tab) => tab?.id) : null
-    if (first?.id) {
-      lastMarketplaceTabId = first.id
-      lastMarketplaceTabUrl = first.url || ""
-      return { tabId: first.id, url: first.url || "" }
+    if (Array.isArray(tabs) && tabs.length) {
+      const getLastAccessed = (tab: chrome.tabs.Tab) =>
+        Number((tab as chrome.tabs.Tab & { lastAccessed?: number }).lastAccessed || 0)
+
+      const sortableTabs = tabs
+        .filter((tab): tab is chrome.tabs.Tab => Boolean(tab?.id))
+        .sort((a, b) => getLastAccessed(b) - getLastAccessed(a))
+
+      const actionable =
+        sortableTabs.find((tab) => isMarketplaceOrderDetailUrl(tab.url || "")) || null
+      if (actionable?.id) {
+        lastMarketplaceTabId = actionable.id
+        lastMarketplaceTabUrl = actionable.url || ""
+        return { tabId: actionable.id, url: actionable.url || "" }
+      }
+
+      if (activeMarketplaceFallback) {
+        return activeMarketplaceFallback
+      }
+
+      const first = sortableTabs[0] || null
+      if (first?.id) {
+        return { tabId: first.id, url: first.url || "" }
+      }
     }
   } catch (_error) {
     // ignore
+  }
+
+  if (activeMarketplaceFallback) {
+    return activeMarketplaceFallback
   }
 
   return { tabId: null, url: "" }
@@ -238,7 +293,12 @@ const fallbackFetchWithExecuteScript = async (
 
   const payload = result?.result as ContentFetchResponse | undefined
   if (!payload) {
-    throw new Error("Result executeScript kosong.")
+    const fallbackError = String((result as { error?: unknown })?.error || "").trim()
+    throw new Error(
+      fallbackError
+        ? `Result executeScript kosong (${fallbackError}).`
+        : "Result executeScript kosong."
+    )
   }
 
   return payload
@@ -259,6 +319,18 @@ const executeFetchFromTab = async (
       step: "content-fallback",
       error: String((error as Error)?.message || error)
     })
+
+    try {
+      await ensureMarketplaceContentScriptInjected(tabId)
+      return await sendContentFetchCommand(tabId, marketplace, actionMode, settings)
+    } catch (retryError) {
+      logger.warn("Content reinjection retry failed, using executeScript fallback", {
+        feature: "fetch-send",
+        domain: marketplace,
+        step: "content-reinject-retry",
+        error: String((retryError as Error)?.message || retryError)
+      })
+    }
 
     return withTimeout(
       fallbackFetchWithExecuteScript(tabId, marketplace, actionMode, settings),
@@ -415,7 +487,7 @@ export const executeFetchSendByOrder = async (
       ok: exportResult.ok,
       error: exportResult.ok
         ? ""
-        : `Export gagal ${exportResult.status}: ${exportResult.statusText || "Error"}`,
+        : formatExportFailureMessage(exportResult),
       marketplace,
       actionMode: input.actionMode,
       fetchResult,
@@ -563,7 +635,7 @@ export const executeFetchSendOnActiveMarketplaceTab = async (
     ok: exportResult.ok,
     error: exportResult.ok
       ? ""
-      : `Export gagal ${exportResult.status}: ${exportResult.statusText || "Error"}`,
+      : formatExportFailureMessage(exportResult),
     marketplace,
     actionMode,
     fetchResult,

@@ -37,6 +37,43 @@ export const detectMarketplaceFromUrl = (url: string): Exclude<Marketplace, "aut
   return ""
 }
 
+const parseUrl = (value: string) => {
+  try {
+    return new URL(String(value || ""))
+  } catch (_error) {
+    return null
+  }
+}
+
+export const isMarketplaceOrderDetailUrl = (url: string) => {
+  const parsed = parseUrl(url)
+  if (!parsed) return false
+
+  if (
+    parsed.hostname === "seller.shopee.co.id" &&
+    /\/portal\/sale\/order\/\d+/.test(parsed.pathname)
+  ) {
+    return true
+  }
+
+  if (parsed.hostname === "seller-id.tokopedia.com") {
+    if (
+      parsed.searchParams.get("order_no") ||
+      parsed.searchParams.get("orderNo") ||
+      parsed.searchParams.get("main_order_id") ||
+      parsed.searchParams.get("order_id")
+    ) {
+      return true
+    }
+
+    if (/\/order\/detail/.test(parsed.pathname) || /\/order\/\d+/.test(parsed.pathname)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 export const getMarketplaceLabel = (value: Marketplace | string) => {
   const normalized = String(value || "").trim().toLowerCase()
   if (normalized === "shopee") return "Shopee"

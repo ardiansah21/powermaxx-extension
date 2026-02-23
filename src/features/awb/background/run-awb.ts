@@ -7,7 +7,10 @@ import type {
 } from "~src/core/messages/contracts"
 import { type PowermaxxSettings } from "~src/core/settings/schema"
 import { runMarketplaceAwbInPage } from "~src/features/awb/content/page-runner"
-import { resolveMarketplaceTab } from "~src/features/fetch-send/background/run-fetch-send"
+import {
+  ensureMarketplaceContentScriptInjected,
+  resolveMarketplaceTab
+} from "~src/features/fetch-send/background/run-fetch-send"
 
 export interface ExecuteAwbResult {
   ok: boolean
@@ -104,7 +107,12 @@ const fallbackAwbWithExecuteScript = async (
 
   const payload = result?.result as ContentAwbResponse | undefined
   if (!payload) {
-    throw new Error("Result executeScript AWB kosong.")
+    const fallbackError = String((result as { error?: unknown })?.error || "").trim()
+    throw new Error(
+      fallbackError
+        ? `Result executeScript AWB kosong (${fallbackError}).`
+        : "Result executeScript AWB kosong."
+    )
   }
 
   return payload
@@ -124,6 +132,19 @@ const executeAwbFromTab = async (
       step: "content-fallback",
       error: String((error as Error)?.message || error)
     })
+
+    try {
+      await ensureMarketplaceContentScriptInjected(tabId)
+      return await sendContentAwbCommand(tabId, marketplace, settings)
+    } catch (retryError) {
+      logger.warn("AWB content reinjection retry failed, using executeScript fallback", {
+        feature: "awb",
+        domain: marketplace,
+        step: "content-reinject-retry",
+        error: String((retryError as Error)?.message || retryError)
+      })
+    }
+
     return fallbackAwbWithExecuteScript(tabId, marketplace, settings)
   }
 }

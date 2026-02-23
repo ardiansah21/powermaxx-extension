@@ -33,6 +33,102 @@ export interface SendExportResponse {
   }
 }
 
+const sanitizeErrorText = (value: unknown, max = 240) => {
+  if (typeof value !== "string") return ""
+  const cleaned = value.trim().replace(/\s+/g, " ")
+  if (!cleaned) return ""
+  if (cleaned.length <= max) return cleaned
+  return `${cleaned.slice(0, max)}...`
+}
+
+const toObjectRecord = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+
+const pickMessageFromErrorsField = (errors: unknown) => {
+  if (Array.isArray(errors)) {
+    for (const entry of errors) {
+      const item = sanitizeErrorText(entry)
+      if (item) return item
+      const nested = toObjectRecord(entry)
+      if (!nested) continue
+      for (const nestedValue of Object.values(nested)) {
+        if (Array.isArray(nestedValue)) {
+          for (const nestedItem of nestedValue) {
+            const text = sanitizeErrorText(nestedItem)
+            if (text) return text
+          }
+          continue
+        }
+        const text = sanitizeErrorText(nestedValue)
+        if (text) return text
+      }
+    }
+    return ""
+  }
+
+  const objectErrors = toObjectRecord(errors)
+  if (!objectErrors) return sanitizeErrorText(errors)
+
+  for (const value of Object.values(objectErrors)) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const text = sanitizeErrorText(item)
+        if (text) return text
+      }
+      continue
+    }
+    const text = sanitizeErrorText(value)
+    if (text) return text
+  }
+
+  return ""
+}
+
+const extractResponseErrorMessage = (response: SendExportResponse) => {
+  const dataRecord = toObjectRecord(response.data)
+  const directCandidates = [
+    sanitizeErrorText(dataRecord?.message),
+    sanitizeErrorText(dataRecord?.error),
+    sanitizeErrorText(dataRecord?.detail),
+    sanitizeErrorText(dataRecord?.title)
+  ]
+
+  for (const candidate of directCandidates) {
+    if (candidate) return candidate
+  }
+
+  const errorFromErrors = pickMessageFromErrorsField(dataRecord?.errors)
+  if (errorFromErrors) return errorFromErrors
+
+  const bodyRecord = toObjectRecord(
+    response.body ? safeJson(response.body) : null
+  )
+  const bodyCandidates = [
+    sanitizeErrorText(bodyRecord?.message),
+    sanitizeErrorText(bodyRecord?.error),
+    sanitizeErrorText(bodyRecord?.detail)
+  ]
+
+  for (const candidate of bodyCandidates) {
+    if (candidate) return candidate
+  }
+
+  const htmlText = sanitizeErrorText(response.htmlSnippet)
+  if (htmlText) return htmlText
+
+  return ""
+}
+
+const safeJson = (value: string) => {
+  try {
+    return JSON.parse(value) as Record<string, unknown>
+  } catch (_error) {
+    return null
+  }
+}
+
 export const buildExportPayload = (
   marketplace: Marketplace,
   payload: FetchResultPayload
@@ -125,6 +221,27 @@ export const sendExport = async (
       }
     }
   }
+}
+
+export const formatExportFailureMessage = (response: SendExportResponse) => {
+  if (response.ok) return ""
+
+  if (response.status === 0) {
+    const fetchMessage = sanitizeErrorText(response.error?.message)
+    return fetchMessage
+      ? `Export gagal: ${fetchMessage}`
+      : "Export gagal: koneksi ke server gagal."
+  }
+
+  const detail = extractResponseErrorMessage(response)
+  if (detail) return `Export gagal ${response.status}: ${detail}`
+
+  const statusText = sanitizeErrorText(response.statusText)
+  if (statusText && statusText.toLowerCase() !== "error") {
+    return `Export gagal ${response.status}: ${statusText}`
+  }
+
+  return `Export gagal ${response.status}: Error`
 }
 
 const normalizeOrderIdValue = (value: unknown) => {
