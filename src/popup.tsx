@@ -218,6 +218,7 @@ function PopupPage() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [status, setStatus] = useState("")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
+  const [pendingOrderUrl, setPendingOrderUrl] = useState("")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
 
@@ -228,6 +229,11 @@ function PopupPage() {
 
   const clearStatusMessage = () => {
     setStatus("")
+  }
+
+  const setOrderUrlIfAny = (value?: string) => {
+    const next = String(value || "").trim()
+    setPendingOrderUrl(next)
   }
 
   const canLogin = useMemo(
@@ -299,6 +305,7 @@ function PopupPage() {
 
     try {
       setBusyLogin(true)
+      setOrderUrlIfAny("")
       setStatusMessage("Meminta host permission...", "neutral")
 
       const granted = await ensureHostPermission(normalizedBaseUrl)
@@ -341,6 +348,7 @@ function PopupPage() {
   const handleLogout = async () => {
     try {
       setBusyLogin(true)
+      setOrderUrlIfAny("")
       setStatusMessage("Logout...", "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
         type: "POWERMAXX_POPUP_LOGOUT"
@@ -375,6 +383,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
+      setOrderUrlIfAny("")
       setStatusMessage(`Menjalankan ${actionMode}...`, "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
         type: "POWERMAXX_POPUP_FETCH_SEND",
@@ -386,9 +395,7 @@ function PopupPage() {
         return
       }
 
-      if (response.openUrl) {
-        await chrome.tabs.create({ url: response.openUrl })
-      }
+      setOrderUrlIfAny(response.openUrl)
 
       setStatusMessage(
         response.orderId
@@ -443,6 +450,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
+      setOrderUrlIfAny("")
       setStatusMessage("Menjalankan AWB...", "neutral")
 
       const response = await sendRuntimeMessage<RuntimeResult>({
@@ -488,6 +496,7 @@ function PopupPage() {
     try {
       setShowToolsMenu(false)
       setBusyAction(true)
+      setOrderUrlIfAny("")
       setStatusMessage("Menjalankan fetch + send + AWB...", "neutral")
 
       const response = await sendRuntimeMessage<RuntimeResult>({
@@ -499,9 +508,9 @@ function PopupPage() {
 
       if (response?.awb?.openUrl && !response.awb?.downloaded) {
         await chrome.tabs.create({ url: response.awb.openUrl })
-      } else if (response?.openUrl) {
-        await chrome.tabs.create({ url: response.openUrl })
       }
+
+      setOrderUrlIfAny(response?.openUrl)
 
       if (fetchOk && awbOk) {
         const awbLabel = response.awb?.downloaded
@@ -778,6 +787,21 @@ function PopupPage() {
       {status && (
         <div style={statusStyle(statusTone)} aria-live="polite">
           {status}
+        </div>
+      )}
+
+      {pendingOrderUrl && (
+        <div style={{ ...cardStyle, paddingTop: 10, paddingBottom: 10 }}>
+          <button
+            type="button"
+            style={{
+              ...buttonStyle("primary", busyLogin || busyAction),
+              ...fullButtonStyle
+            }}
+            disabled={busyLogin || busyAction}
+            onClick={() => chrome.tabs.create({ url: pendingOrderUrl })}>
+            Open Order
+          </button>
         </div>
       )}
 
