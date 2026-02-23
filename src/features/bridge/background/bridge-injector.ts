@@ -480,6 +480,7 @@ const installBridgeScript = () => {
     const shouldDiscoverRunId =
       !runId &&
       (rawMode === "single" ||
+        rawMode === "bulk" ||
         data.worker_mode === true ||
         data.workerMode === true)
 
