@@ -23,3 +23,4 @@
 - [2026-02-23] Penyederhanaan UX final popup: tombol `Update Order`/`Update Income` dihapus (diwakili flow `Fetch + Send`), dan `Bulk`, `Viewer`, `Pengaturan`, serta `Logout` disatukan ke satu group menu header tanpa menampilkan info sesi.
 - [2026-02-23] Bridge worker event digating per `run_id` dan dibuffer sampai response runtime terkirim agar event progress tidak menimpa final response pada listener web legacy.
 - [2026-02-23] Mode bridge `single` kini kompatibel dengan payload tanpa `run_id` melalui fallback headless-bulk + inferensi `run_id` dari notifikasi DOM halaman Laravel jika tersedia.
+- [2026-02-23] Worker `claim-next` ditambah payload canonical (`run_id`/`worker_id` + alias camelCase) dan retry claim awal singkat untuk mengurangi race condition setelah run dibuat.

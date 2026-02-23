@@ -25,6 +25,8 @@
 - Jika ada response bridge eksternal (legacy) yang terdeteksi dalam grace window, handler bridge extension baru membatalkan eksekusi lokal request tersebut untuk menekan duplicate side effects.
 - Worker event dari background tidak langsung dipost ke page saat request aktif; event dibuffer dulu dan hanya dilepas untuk `run_id` yang sesuai setelah response runtime terkirim.
 - Bridge menerima varian payload run ID (`run_id`, `runId`, `run_uuid`, `runUuid`) dan akan mencoba inferensi dari teks notifikasi DOM saat run ID tidak dikirim oleh frontend Laravel build lama.
+- Worker mode kini mengirim payload claim yang lebih kompatibel (`run_id`, `runId`, `worker_id`, `workerId`, `action`, `mode`) dan melakukan retry claim awal singkat untuk menghindari race saat run baru dibuat.
+- Bila backend API hanya menerima path `claim-next` berbasis ID numerik (bukan UUID), worker akan gagal cepat dengan error `Claim next gagal 404`; status ini saat ini jadi indikator utama bahwa backend belum menerima `run_uuid` pada route claim.
 - Mode `single` tanpa `run_id` tidak lagi hard-fail; background memakai fallback eksekusi headless untuk menjaga kompatibilitas payload lama.
 - `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
