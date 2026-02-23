@@ -10,13 +10,13 @@
 - Error logging mengikuti format terstruktur: `feature`, `domain`, `step`, `context`.
 - Popup login disederhanakan: saat belum login hanya menampilkan form `Email + Password`; section `Fetch + Send` disembunyikan sampai sesi aktif.
 - Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
-- Popup sesi aktif sekarang memakai pola `Aksi Utama` + `Aksi Lanjutan` (collapsible) agar UI tetap ringkas, dengan aksi utama `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
-- Popup sesi aktif sekarang juga menyediakan shortcut ke tab `Bulk Operator` dan `Viewer`.
-- Untuk parity legacy, popup `Aksi Lanjutan` menyediakan `Ambil Data` (fetch-only, simpan payload viewer) dan `Kirim Data` (send payload viewer terakhir tanpa fetch ulang).
+- Popup sesi aktif sekarang memakai pola `Aksi Utama` saja (tanpa tombol update terpisah), dengan aksi `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
+- Akses `Bulk Operator`, `Viewer`, `Pengaturan`, dan aksi `Logout` digabung dalam satu group menu di header popup tanpa menampilkan info sesi tambahan.
+- Aksi `Ambil Data` dan `Kirim Data` di popup dihapus; proses fetch payload untuk viewer dipindahkan ke auto-fetch pada halaman Viewer saat payload masih kosong.
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.
 - Viewer payload disimpan di key `powermaxxViewerPayload` (chrome.storage.local) saat flow popup `Fetch + Send` atau `Fetch + Send + AWB` berhasil fetch data.
-- Viewer fokus menampilkan ringkasan + raw JSON payload terakhir agar proses inspeksi tetap cepat dan sederhana.
+- Viewer fokus menampilkan ringkasan + raw JSON payload terakhir agar proses inspeksi tetap cepat dan sederhana, serta akan mencoba auto-fetch dari tab marketplace aktif saat data belum tersedia.
 - Worker `run_order report` memakai dedupe key per `run_id:run_order_id` dan disimpan sementara di `chrome.storage.local` untuk mencegah report duplikat saat retry/restart.
 - Worker dan bulk menggunakan klasifikasi error dasar (`TIMEOUT`, `PROCESSING_FAILED`, dll) agar event/status lebih konsisten untuk debugging.
 - Bridge injeksi menambahkan marker internal `__pmx_bridge_owner` dan `__pmx_request_id` pada outbound event dari extension baru untuk observability.

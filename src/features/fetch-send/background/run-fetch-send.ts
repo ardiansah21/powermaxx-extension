@@ -194,17 +194,21 @@ const sendContentFetchCommand = async (
     }
   }
 
-  const response = await new Promise<ContentFetchResponse>((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, payload, (runtimeResponse) => {
-      const runtimeError = chrome.runtime.lastError?.message || ""
-      if (runtimeError) {
-        reject(new Error(runtimeError))
-        return
-      }
+  const response = await withTimeout(
+    new Promise<ContentFetchResponse>((resolve, reject) => {
+      chrome.tabs.sendMessage(tabId, payload, (runtimeResponse) => {
+        const runtimeError = chrome.runtime.lastError?.message || ""
+        if (runtimeError) {
+          reject(new Error(runtimeError))
+          return
+        }
 
-      resolve(runtimeResponse as ContentFetchResponse)
-    })
-  })
+        resolve(runtimeResponse as ContentFetchResponse)
+      })
+    }),
+    45000,
+    "Timeout menunggu response content script."
+  )
 
   if (!response || typeof response !== "object") {
     throw new Error("Response content script kosong.")
@@ -256,7 +260,11 @@ const executeFetchFromTab = async (
       error: String((error as Error)?.message || error)
     })
 
-    return fallbackFetchWithExecuteScript(tabId, marketplace, actionMode, settings)
+    return withTimeout(
+      fallbackFetchWithExecuteScript(tabId, marketplace, actionMode, settings),
+      90000,
+      "Timeout proses fallback executeScript."
+    )
   }
 }
 

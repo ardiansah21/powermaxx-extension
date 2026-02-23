@@ -89,26 +89,12 @@ const iconButtonStyle: React.CSSProperties = {
   cursor: "pointer"
 }
 
-const avatarButtonStyle = (loggedIn: boolean): React.CSSProperties => ({
-  width: 30,
-  height: 30,
-  borderRadius: 999,
-  border: `1px solid ${loggedIn ? "#10b981" : "#f59e0b"}`,
-  background: loggedIn ? "#ecfdf5" : "#fffbeb",
-  color: loggedIn ? "#065f46" : "#92400e",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-  display: "grid",
-  placeItems: "center"
-})
-
-const accountMenuStyle: React.CSSProperties = {
+const toolsMenuStyle: React.CSSProperties = {
   position: "absolute",
   top: 36,
   right: 0,
   zIndex: 10,
-  width: 216,
+  width: 214,
   border: "1px solid #cbd5e1",
   borderRadius: 10,
   padding: SPACE.sm,
@@ -116,17 +102,11 @@ const accountMenuStyle: React.CSSProperties = {
   boxShadow: "0 6px 20px rgba(15, 23, 42, 0.12)"
 }
 
-const menuEmailStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 12,
-  fontWeight: 600,
-  overflowWrap: "anywhere"
-}
-
-const menuMutedStyle: React.CSSProperties = {
-  margin: "2px 0 8px",
-  fontSize: 11,
-  color: "#64748b"
+const menuItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-start",
+  gap: 8
 }
 
 const statusToneStyle: Record<StatusTone, React.CSSProperties> = {
@@ -180,12 +160,6 @@ const passwordRowStyle: React.CSSProperties = {
   gap: SPACE.sm
 }
 
-const rowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: SPACE.sm
-}
-
 const actionStackStyle: React.CSSProperties = {
   display: "grid",
   gap: SPACE.sm
@@ -211,27 +185,13 @@ const buttonStyle = (
   opacity: disabled ? 0.6 : 1
 })
 
-const advancedToggleStyle = (
-  open: boolean,
-  disabled = false
-): React.CSSProperties => ({
-  ...buttonStyle("neutral", disabled),
-  ...fullButtonStyle,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  fontWeight: 600,
-  color: open ? "#1d4ed8" : "#0f172a"
-})
-
 function PopupPage() {
   const headerWrapRef = useRef<HTMLDivElement | null>(null)
   const [baseUrl, setBaseUrl] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [showAccountMenu, setShowAccountMenu] = useState(false)
-  const [showAdvancedActions, setShowAdvancedActions] = useState(false)
+  const [showToolsMenu, setShowToolsMenu] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [status, setStatus] = useState("Memuat sesi...")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
@@ -248,18 +208,13 @@ function PopupPage() {
     [email, password]
   )
 
-  const avatarLabel = loggedIn ? String(email || "U").charAt(0).toUpperCase() : "U"
-
   const syncSession = async () => {
     const settings = await loadSettings()
     const active = Boolean(settings.auth.token)
     setBaseUrl(settings.auth.baseUrl || "")
     setEmail(settings.auth.email || "")
     setLoggedIn(active)
-    setShowAccountMenu(false)
-    if (!active) {
-      setShowAdvancedActions(false)
-    }
+    setShowToolsMenu(false)
     return { active, email: settings.auth.email || "", baseUrl: settings.auth.baseUrl || "" }
   }
 
@@ -276,19 +231,19 @@ function PopupPage() {
   }, [])
 
   useEffect(() => {
-    if (!showAccountMenu) return
+    if (!showToolsMenu) return
 
     const onMouseDown = (event: MouseEvent) => {
       const target = event.target as Node | null
       if (!target) return
       if (!headerWrapRef.current?.contains(target)) {
-        setShowAccountMenu(false)
+        setShowToolsMenu(false)
       }
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setShowAccountMenu(false)
+        setShowToolsMenu(false)
       }
     }
 
@@ -299,7 +254,7 @@ function PopupPage() {
       document.removeEventListener("mousedown", onMouseDown)
       document.removeEventListener("keydown", onKeyDown)
     }
-  }, [showAccountMenu])
+  }, [showToolsMenu])
 
   const handleLogin = async (event?: React.FormEvent) => {
     event?.preventDefault()
@@ -341,7 +296,7 @@ function PopupPage() {
 
       setPassword("")
       setShowPassword(false)
-      setShowAccountMenu(false)
+      setShowToolsMenu(false)
       const session = await syncSession()
       setStatusMessage(
         `Login berhasil: ${session.email || normalizedEmail}`,
@@ -372,7 +327,7 @@ function PopupPage() {
 
       setPassword("")
       setShowPassword(false)
-      setShowAccountMenu(false)
+      setShowToolsMenu(false)
       await syncSession()
       setStatusMessage("Logout berhasil.", "success")
     } catch (error) {
@@ -392,7 +347,7 @@ function PopupPage() {
     }
 
     try {
-      setShowAccountMenu(false)
+      setShowToolsMenu(false)
       setBusyAction(true)
       setStatusMessage(`Menjalankan ${actionMode}...`, "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
@@ -425,83 +380,9 @@ function PopupPage() {
     }
   }
 
-  const runFetchOnly = async () => {
-    if (!loggedIn) {
-      setStatusMessage("Belum login.", "warning")
-      return
-    }
-
-    try {
-      setShowAccountMenu(false)
-      setBusyAction(true)
-      setStatusMessage("Mengambil data marketplace...", "neutral")
-
-      const response = await sendRuntimeMessage<RuntimeResult>({
-        type: "POWERMAXX_POPUP_FETCH_ONLY",
-        actionMode: "fetch_send"
-      })
-
-      if (!response?.ok) {
-        setStatusMessage(response?.error || "Ambil data gagal.", "error")
-        return
-      }
-
-      setStatusMessage(
-        "Data berhasil diambil dan disimpan di Viewer.",
-        "success"
-      )
-    } catch (error) {
-      setStatusMessage(
-        `Ambil data gagal: ${String((error as Error)?.message || error)}`,
-        "error"
-      )
-    } finally {
-      setBusyAction(false)
-    }
-  }
-
-  const runSendViewer = async () => {
-    if (!loggedIn) {
-      setStatusMessage("Belum login.", "warning")
-      return
-    }
-
-    try {
-      setShowAccountMenu(false)
-      setBusyAction(true)
-      setStatusMessage("Mengirim data terakhir dari Viewer...", "neutral")
-
-      const response = await sendRuntimeMessage<RuntimeResult>({
-        type: "POWERMAXX_POPUP_SEND_VIEWER"
-      })
-
-      if (!response?.ok) {
-        setStatusMessage(response?.error || "Kirim data gagal.", "error")
-        return
-      }
-
-      if (response.openUrl) {
-        await chrome.tabs.create({ url: response.openUrl })
-      }
-
-      setStatusMessage(
-        response.orderId
-          ? `Export berhasil. Order: ${response.orderId}`
-          : "Export berhasil.",
-        "success"
-      )
-    } catch (error) {
-      setStatusMessage(
-        `Kirim data gagal: ${String((error as Error)?.message || error)}`,
-        "error"
-      )
-    } finally {
-      setBusyAction(false)
-    }
-  }
-
   const openBulkOperator = async () => {
     try {
+      setShowToolsMenu(false)
       await chrome.tabs.create({
         url: chrome.runtime.getURL("tabs/bulk.html")
       })
@@ -515,6 +396,7 @@ function PopupPage() {
 
   const openViewer = async () => {
     try {
+      setShowToolsMenu(false)
       await chrome.tabs.create({
         url: chrome.runtime.getURL("tabs/viewer.html")
       })
@@ -533,7 +415,7 @@ function PopupPage() {
     }
 
     try {
-      setShowAccountMenu(false)
+      setShowToolsMenu(false)
       setBusyAction(true)
       setStatusMessage("Menjalankan AWB...", "neutral")
 
@@ -578,7 +460,7 @@ function PopupPage() {
     }
 
     try {
-      setShowAccountMenu(false)
+      setShowToolsMenu(false)
       setBusyAction(true)
       setStatusMessage("Menjalankan fetch + send + AWB...", "neutral")
 
@@ -651,8 +533,8 @@ function PopupPage() {
             <button
               type="button"
               style={iconButtonStyle}
-              onClick={() => chrome.runtime.openOptionsPage()}
-              aria-label="Buka options">
+              onClick={() => setShowToolsMenu((value) => !value)}
+              aria-label="Buka menu">
               <svg
                 width="14"
                 height="14"
@@ -660,45 +542,133 @@ function PopupPage() {
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
                 aria-hidden="true">
-                <path
-                  d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                />
-                <path
-                  d="M19.4 13.5C19.46 13 19.5 12.5 19.5 12C19.5 11.5 19.46 11 19.4 10.5L21.1 9.2L19.4 6.3L17.3 7.1C16.5 6.5 15.6 6 14.6 5.7L14.3 3.5H10.9L10.6 5.7C9.6 6 8.7 6.5 7.9 7.1L5.8 6.3L4.1 9.2L5.8 10.5C5.74 11 5.7 11.5 5.7 12C5.7 12.5 5.74 13 5.8 13.5L4.1 14.8L5.8 17.7L7.9 16.9C8.7 17.5 9.6 18 10.6 18.3L10.9 20.5H14.3L14.6 18.3C15.6 18 16.5 17.5 17.3 16.9L19.4 17.7L21.1 14.8L19.4 13.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
+                <rect x="4" y="4" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="14" y="4" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="4" y="14" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="14" y="14" width="6" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
               </svg>
+            </button>
+          </div>
+        </header>
+
+        {showToolsMenu && (
+          <div style={toolsMenuStyle}>
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", false),
+                ...fullButtonStyle
+              }}
+              onClick={() => {
+                setShowToolsMenu(false)
+                void openViewer()
+              }}>
+              <span style={menuItemStyle}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true">
+                  <path
+                    d="M2.5 12C4.7 7.8 8.1 5.7 12 5.7C15.9 5.7 19.3 7.8 21.5 12C19.3 16.2 15.9 18.3 12 18.3C8.1 18.3 4.7 16.2 2.5 12Z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+                <span>Viewer</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", false),
+                ...fullButtonStyle,
+                marginTop: SPACE.sm
+              }}
+              onClick={() => {
+                setShowToolsMenu(false)
+                void openBulkOperator()
+              }}>
+              <span style={menuItemStyle}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true">
+                  <rect x="3.5" y="4" width="17" height="16" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                  <path d="M7 9H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M7 13H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M7 17H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <span>Bulk Operator</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              style={{
+                ...buttonStyle("neutral", false),
+                ...fullButtonStyle,
+                marginTop: SPACE.sm
+              }}
+              onClick={() => {
+                setShowToolsMenu(false)
+                chrome.runtime.openOptionsPage()
+              }}>
+              <span style={menuItemStyle}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true">
+                  <path
+                    d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  />
+                  <path
+                    d="M19.4 13.5C19.46 13 19.5 12.5 19.5 12C19.5 11.5 19.46 11 19.4 10.5L21.1 9.2L19.4 6.3L17.3 7.1C16.5 6.5 15.6 6 14.6 5.7L14.3 3.5H10.9L10.6 5.7C9.6 6 8.7 6.5 7.9 7.1L5.8 6.3L4.1 9.2L5.8 10.5C5.74 11 5.7 11.5 5.7 12C5.7 12.5 5.74 13 5.8 13.5L4.1 14.8L5.8 17.7L7.9 16.9C8.7 17.5 9.6 18 10.6 18.3L10.9 20.5H14.3L14.6 18.3C15.6 18 16.5 17.5 17.3 16.9L19.4 17.7L21.1 14.8L19.4 13.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Pengaturan</span>
+              </span>
             </button>
             {loggedIn && (
               <button
                 type="button"
-                style={avatarButtonStyle(true)}
-                onClick={() => setShowAccountMenu((value) => !value)}
-                aria-label={`Sesi aktif ${email}`}>
-                {avatarLabel}
+                style={{
+                  ...buttonStyle("neutral", busyLogin || busyAction),
+                  ...fullButtonStyle,
+                  marginTop: SPACE.sm
+                }}
+                disabled={busyLogin || busyAction}
+                onClick={handleLogout}>
+                <span style={menuItemStyle}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <path d="M10 4H5.5C4.7 4 4 4.7 4 5.5V18.5C4 19.3 4.7 20 5.5 20H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    <path d="M14 8L19 12L14 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 12H19" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                  <span>Logout</span>
+                </span>
               </button>
             )}
-          </div>
-        </header>
-
-        {loggedIn && showAccountMenu && (
-          <div style={accountMenuStyle}>
-            <p style={menuEmailStyle}>{email}</p>
-            <p style={menuMutedStyle}>Sesi aktif</p>
-            <button
-              type="button"
-              style={{
-                ...buttonStyle("neutral", busyLogin || busyAction || !loggedIn),
-                ...fullButtonStyle
-              }}
-              disabled={busyLogin || busyAction || !loggedIn}
-              onClick={handleLogout}>
-              Logout
-            </button>
           </div>
         )}
       </div>
@@ -799,91 +769,6 @@ function PopupPage() {
               Download AWB
             </button>
           </div>
-
-          <button
-            type="button"
-            style={{
-              ...advancedToggleStyle(showAdvancedActions, busyLogin || busyAction),
-              marginTop: SPACE.md
-            }}
-            disabled={busyLogin || busyAction}
-            onClick={() => setShowAdvancedActions((value) => !value)}>
-            <span>Aksi Lanjutan</span>
-            <span aria-hidden="true">{showAdvancedActions ? "▾" : "▸"}</span>
-          </button>
-
-          {showAdvancedActions && (
-            <div style={{ ...actionStackStyle, marginTop: SPACE.sm }}>
-              <div style={rowStyle}>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={() => runFetchSend("update_order")}>
-                  Update Order
-                </button>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={() => runFetchSend("update_income")}>
-                  Update Income
-                </button>
-              </div>
-
-              <div style={rowStyle}>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={runFetchOnly}>
-                  Ambil Data
-                </button>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={runSendViewer}>
-                  Kirim Data
-                </button>
-              </div>
-
-              <div style={rowStyle}>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={openBulkOperator}>
-                  Bulk Operator
-                </button>
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={openViewer}>
-                  Viewer
-                </button>
-              </div>
-            </div>
-          )}
         </section>
       )}
     </main>

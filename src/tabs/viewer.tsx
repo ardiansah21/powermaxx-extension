@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
+import { sendRuntimeMessage } from "~src/core/messaging/runtime-client"
 import {
   clearViewerPayload,
   loadViewerPayload,
@@ -7,6 +8,10 @@ import {
 } from "~src/features/viewer/shared/storage"
 
 type StatusTone = "neutral" | "success" | "warning" | "error"
+type RuntimeResult = {
+  ok: boolean
+  error?: string
+}
 
 const pageStyle: React.CSSProperties = {
   fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
@@ -142,18 +147,51 @@ function ViewerTabPage() {
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [busy, setBusy] = useState(false)
 
-  const refresh = async () => {
+  const refresh = async (autoFetchIfEmpty = true) => {
     setBusy(true)
     try {
       const loaded = await loadViewerPayload()
       setPayload(loaded)
-      if (!loaded) {
-        setStatus("Belum ada data. Jalankan Fetch + Send dari popup terlebih dulu.")
-        setStatusTone("warning")
-      } else {
+
+      if (loaded) {
         setStatus("Data viewer siap.")
         setStatusTone("success")
+        return
       }
+
+      if (!autoFetchIfEmpty) {
+        setStatus("Belum ada data viewer.")
+        setStatusTone("warning")
+        return
+      }
+
+      setStatus("Belum ada data. Mengambil data dari tab marketplace aktif...")
+      setStatusTone("neutral")
+
+      const response = await sendRuntimeMessage<RuntimeResult>({
+        type: "POWERMAXX_POPUP_FETCH_ONLY",
+        actionMode: "fetch_send"
+      })
+
+      if (!response?.ok) {
+        setStatus(
+          `Belum ada data viewer dan auto-fetch gagal: ${response?.error || "Unknown error"}`
+        )
+        setStatusTone("warning")
+        return
+      }
+
+      const fetched = await loadViewerPayload()
+      setPayload(fetched)
+
+      if (!fetched) {
+        setStatus("Auto-fetch selesai, tetapi data viewer belum tersedia.")
+        setStatusTone("warning")
+        return
+      }
+
+      setStatus("Data viewer berhasil diambil otomatis.")
+      setStatusTone("success")
     } catch (error) {
       setStatus(`Gagal memuat: ${String((error as Error)?.message || error)}`)
       setStatusTone("error")
@@ -234,7 +272,7 @@ function ViewerTabPage() {
       <header style={{ marginBottom: 12 }}>
         <h1 style={titleStyle}>Powermaxx Viewer</h1>
         <p style={subtitleStyle}>
-          Viewer payload terakhir dari proses Fetch + Send extension terbaru.
+          Viewer payload terakhir dari proses extension. Jika kosong, Viewer akan auto-fetch dari tab aktif.
         </p>
       </header>
 

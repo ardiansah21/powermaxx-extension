@@ -17,4 +17,6 @@
 - [2026-02-22] Bulk headless memakai fallback auto-marketplace berbasis default settings (`shopee` -> `tiktok_shop` atau sebaliknya) untuk order yang dikirim tanpa marketplace eksplisit.
 - [2026-02-22] Viewer extension baru dipertahankan sederhana (ringkasan + raw JSON), tanpa tabel sheet tambahan, agar UX tetap ringan dan tidak padat.
 - [2026-02-22] UI popup disederhanakan ke pola aksi utama + aksi lanjutan (collapsible), dan halaman options dipecah per section collapsible agar tetap familiar seperti flow lama namun lebih rapi.
-- [2026-02-23] Untuk menjaga parity flow popup legacy, aksi dipisah kembali: `Ambil Data` (fetch-only ke viewer) dan `Kirim Data` (export payload viewer terakhir) tetap tersedia di `Aksi Lanjutan`.
+- [2026-02-23] (Superseded) Untuk menjaga parity flow popup legacy, aksi dipisah kembali: `Ambil Data` (fetch-only ke viewer) dan `Kirim Data` (export payload viewer terakhir) di `Aksi Lanjutan`.
+- [2026-02-23] Penyederhanaan UX lanjutan: aksi `Ambil Data` dan `Kirim Data` dihapus dari popup; `Bulk Operator` + `Viewer` dipindah ke icon header; Viewer melakukan auto-fetch sendiri saat payload kosong.
+- [2026-02-23] Penyederhanaan UX final popup: tombol `Update Order`/`Update Income` dihapus (diwakili flow `Fetch + Send`), dan `Bulk`, `Viewer`, `Pengaturan`, serta `Logout` disatukan ke satu group menu header tanpa menampilkan info sesi.

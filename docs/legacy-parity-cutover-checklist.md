@@ -19,13 +19,13 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 | --- | --- | --- | --- |
 | Login | Email/password + simpan sesi | Email/password + simpan sesi (`chrome.storage.local`) | Done |
 | Logout | Ada | Ada | Done |
-| Fetch only | `Ambil Data` (tanpa kirim) | `Ambil Data` di `Aksi Lanjutan` (`POWERMAXX_POPUP_FETCH_ONLY`) | Done |
-| Send only | `Kirim Data` dari cache payload | `Kirim Data` di `Aksi Lanjutan` (`POWERMAXX_POPUP_SEND_VIEWER`) | Done |
+| Fetch only | `Ambil Data` (tanpa kirim) | Dipindah ke auto-fetch Viewer (`POWERMAXX_POPUP_FETCH_ONLY`) saat payload kosong | Done |
+| Send only | `Kirim Data` dari cache payload | Tetap tersedia di runtime internal (`POWERMAXX_POPUP_SEND_VIEWER`), tidak ditampilkan di popup | Done |
 | Fetch + Send | Ada | Ada | Done |
 | Fetch + Send + AWB | Ada | Ada | Done |
 | Download AWB | Shopee + TikTok | Shopee + TikTok | Done |
-| Update Order | Ada | Ada | Done |
-| Update Income | Ada | Ada | Done |
+| Update Order | Ada | Digabung ke `Fetch + Send` pada popup baru | Done |
+| Update Income | Ada | Digabung ke `Fetch + Send` pada popup baru | Done |
 | Viewer | Halaman viewer detail | Viewer ringkas (summary + raw JSON) | Done (simplified by decision) |
 | Bulk | Bulk page + run batch | Bulk Operator + headless background executor | Done |
 | Worker mode | claim/heartbeat/report/complete | claim/heartbeat/report/complete + dedupe report | Done |
@@ -36,7 +36,7 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 ## Perbedaan yang Disengaja (Bukan Bug)
 
 1. Viewer disederhanakan menjadi ringkasan + JSON (sheet tabel dihapus sesuai keputusan UX).
-2. UI popup diringkas dengan pola `Aksi Utama` + `Aksi Lanjutan` agar tidak padat.
+2. UI popup diringkas ke `Aksi Utama` saja, dan `Viewer` + `Bulk Operator` + `Pengaturan` + `Logout` digabung ke satu group menu header tanpa info sesi tambahan.
 3. Bulk dijalankan headless di background, bukan membuka legacy bulk runner page.
 4. Menu akun hanya muncul saat login; aksi `Ganti Akun` tidak dipakai.
 
@@ -45,12 +45,10 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 1. `npm run verify` pass.
 2. Popup flow pass:
 1. Login.
-2. `Ambil Data`.
-3. `Kirim Data`.
-4. `Fetch + Send`.
-5. `Fetch + Send + AWB`.
-6. `Download AWB`.
-3. Viewer menampilkan payload terbaru setelah `Ambil Data` atau `Fetch + Send`.
+2. `Fetch + Send`.
+3. `Fetch + Send + AWB`.
+4. `Download AWB`.
+3. Viewer menampilkan payload terbaru setelah `Fetch + Send`, atau auto-fetch saat payload kosong.
 4. Bulk Operator menampilkan progress event (`run_started` -> `run_finished`).
 5. Bridge mode pass untuk `single`, `bulk`, `worker` dengan envelope legacy.
 6. Backend menerima payload extension lama + baru (kompatibilitas API sudah diverifikasi tim backend).
