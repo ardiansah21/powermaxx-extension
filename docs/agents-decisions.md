@@ -28,3 +28,5 @@
 - [2026-02-23] Worker API payload canonical diperluas dengan `tab_id` dan `extension_version` (plus alias camelCase) pada flow `claim-next`, `heartbeat`, `report`, dan `complete` untuk observability lintas legacy + Plasmo.
 - [2026-02-23] Coexistence guard bridge eksternal diperketat: request lokal hanya dibatalkan jika response eksternal bisa dikorelasikan lewat `run_id` atau `__pmx_request_id`, untuk mencegah false-positive "request tidak merespons".
 - [2026-02-23] Worker loop durability dikunci: empty `claim-next` tidak lagi menghentikan run, polling idle memakai backoff 2-5 detik, transient error (`429`/`5xx`/network) memakai retry exponential+jitter, dan run context aktif dipersist agar auto-resume setelah service worker restart.
+- [2026-02-23] (Superseded) Kompatibilitas `single` tanpa `run_id` via fallback headless-bulk dinonaktifkan untuk menegakkan kontrak run-centric.
+- [2026-02-23] Mode `single` dikunci strict run-centric: `run_id`/`runId` wajib ada, dan request tanpa run ID harus hard-fail tanpa fallback ke bulk/non-queue flow.

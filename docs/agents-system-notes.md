@@ -28,7 +28,7 @@
 - Bridge menerima varian payload run ID (`run_id`, `runId`, `run_uuid`, `runUuid`) dan akan mencoba inferensi dari teks notifikasi DOM saat run ID tidak dikirim oleh frontend Laravel build lama.
 - Worker mode kini mengirim payload canonical yang lebih lengkap (`run_id`, `runId`, `worker_id`, `workerId`, `tab_id`, `tabId`, `extension_version`, `extensionVersion`, `action`, `mode`) dan melakukan retry claim awal singkat untuk menghindari race saat run baru dibuat.
 - Berdasarkan patch backend terbaru (kompatibilitas UUID + normalizer payload worker), route `claim-next` menerima `run` berbasis UUID maupun numeric ID tanpa mengubah kontrak API legacy.
-- Mode `single` tanpa `run_id` tidak lagi hard-fail; background memakai fallback eksekusi headless untuk menjaga kompatibilitas payload lama.
+- Mode `single` sekarang strict run-centric: `run_id`/`runId` wajib ada; jika kosong request langsung hard-fail dan tidak boleh fallback ke `runBulkHeadless`.
 - `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
 - Bulk headless sekarang mendukung fallback auto-marketplace: saat order berlabel `auto`/kosong, runner mencoba marketplace default lalu otomatis mencoba marketplace alternatif.

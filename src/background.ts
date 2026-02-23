@@ -601,29 +601,19 @@ const handleSingle = async (
   const runId = String(message.runId || message.run_id || "").trim()
 
   if (!runId) {
-    logger.warn("Bridge single fallback without run_id", {
+    logger.warn("Bridge single rejected without run_id", {
       feature: "bridge",
       domain: "single",
-      step: "fallback-bulk",
+      step: "validation",
       senderTabId: senderTabId || null,
       orders: Array.isArray(message.orders) ? message.orders.length : 0
     })
 
-    const fallback = await runBulkHeadless({
-      message: {
-        type: "POWERMAXX_BULK",
-        action,
-        mode: "bulk",
-        orders: Array.isArray(message.orders) ? message.orders : [],
-        sourceUrl: message.sourceUrl
-      },
-      senderTabId,
-      settings
-    })
-
     return {
-      ...fallback,
-      mode: "single" as const
+      ok: false,
+      running: false,
+      mode: "single" as const,
+      error: "run_id wajib diisi untuk single mode (run-centric)."
     }
   }
 

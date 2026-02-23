@@ -83,15 +83,17 @@ npm run package
 
 1. Jalankan static guard kontrak bridge:
    - `npm run check:bridge-regression`
-2. Jalankan simulasi hardening worker loop:
+2. Jalankan guard strict run-centric untuk mode single:
+   - `npm run check:single-run-centric`
+3. Jalankan simulasi hardening worker loop:
    - `npm run check:worker-durability`
-3. Lanjutkan dengan build check:
+4. Lanjutkan dengan build check:
    - `npx tsc --noEmit`
    - `npm run build`
-4. Lihat checklist browser E2E di:
+5. Lihat checklist browser E2E di:
    - `docs/bridge-regression-checklist.md`
    - `docs/legacy-parity-cutover-checklist.md`
-5. Jalankan verifikasi agregat sekali perintah:
+6. Jalankan verifikasi agregat sekali perintah:
    - `npm run verify`
 
 ## Worker Loop Durability
