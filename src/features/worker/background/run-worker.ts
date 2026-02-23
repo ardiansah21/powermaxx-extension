@@ -23,6 +23,8 @@ const WORKER_LOG_PREFIX = "[PMX-WORKER]"
 const DEFAULT_WORKER_HEARTBEAT_MS = 5000
 const DEFAULT_WORKER_ORDER_TIMEOUT_MS = 180000
 const DEFAULT_WORKER_REQUEST_TIMEOUT_MS = 30000
+const INITIAL_EMPTY_CLAIM_RETRY_LIMIT = 8
+const INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS = 500
 const WORKER_REPORTED_STORAGE_KEY = "pmxWorkerReportedRunOrders"
 const WORKER_REPORTED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -515,13 +517,23 @@ const claimNextRunOrder = async (session: WorkerSession) => {
     runId: session.runId
   })
 
+  const claimPayload = {
+    run_id: session.runId,
+    runId: session.runId,
+    worker_id: session.workerId,
+    workerId: session.workerId,
+    action: session.action,
+    mode: session.mode
+  }
+
   const response = await fetchJsonWithTimeout(
     url,
     {
       method: "POST",
       headers: {
         authorization: `Bearer ${session.token}`
-      }
+      },
+      body: JSON.stringify(claimPayload)
     },
     session.requestTimeoutMs
   )
@@ -830,6 +842,8 @@ const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings
     mode: session.mode
   })
 
+  let initialEmptyClaimAttempts = 0
+
   while (true) {
     const claimResult = await claimNextRunOrder(session)
 
@@ -839,9 +853,24 @@ const runWorkerLoop = async (session: WorkerSession, settings: PowermaxxSettings
 
     const claimed = claimResult.claimed
     if (!claimed?.hasOrder) {
+      if (session.stats.claimed === 0) {
+        if (initialEmptyClaimAttempts < INITIAL_EMPTY_CLAIM_RETRY_LIMIT) {
+          initialEmptyClaimAttempts += 1
+
+          workerLog(session, "warn", "claim_empty_retry", {
+            attempt: initialEmptyClaimAttempts,
+            max_attempts: INITIAL_EMPTY_CLAIM_RETRY_LIMIT
+          })
+
+          await sleep(INITIAL_EMPTY_CLAIM_RETRY_DELAY_MS)
+          continue
+        }
+      }
+
       break
     }
 
+    initialEmptyClaimAttempts = 0
     session.stats.claimed += 1
 
     const outcome = await processClaimedRunOrder(session, claimed, settings)

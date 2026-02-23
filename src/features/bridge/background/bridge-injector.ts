@@ -18,6 +18,8 @@ const installBridgeScript = () => {
   const KNOWN_EXTERNAL_GRACE_MS = 180
   const EXTERNAL_RECENT_WINDOW_MS = 30_000
   const WORKER_EVENT_RUN_TTL_MS = 30 * 60 * 1000
+  const RUN_ID_DISCOVERY_MAX_WAIT_MS = 2500
+  const RUN_ID_DISCOVERY_INTERVAL_MS = 125
   const RUN_ID_REGEX =
     /\brun\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi
   const ALLOWED_ACTIONS = new Set(["update_order", "update_income", "update_both"])
@@ -198,6 +200,26 @@ const installBridgeScript = () => {
     })
 
     return runIds.length ? runIds[runIds.length - 1] : ""
+  }
+
+  const waitForRunIdFromDom = async () => {
+    const immediate = inferRunIdFromDom()
+    if (immediate) return immediate
+
+    const startedAt = Date.now()
+
+    while (Date.now() - startedAt < RUN_ID_DISCOVERY_MAX_WAIT_MS) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, RUN_ID_DISCOVERY_INTERVAL_MS)
+      )
+
+      const discovered = inferRunIdFromDom()
+      if (discovered) {
+        return discovered
+      }
+    }
+
+    return ""
   }
 
   const pruneWorkerEventAllowList = () => {
@@ -452,7 +474,19 @@ const installBridgeScript = () => {
     const explicitRunId = normalizeRunId(
       data.run_id || data.runId || data.run_uuid || data.runUuid
     )
-    const runId = explicitRunId || inferRunIdFromDom()
+    let runId = explicitRunId || inferRunIdFromDom()
+
+    const rawMode = String(data.mode || "").trim().toLowerCase()
+    const shouldDiscoverRunId =
+      !runId &&
+      (rawMode === "single" ||
+        data.worker_mode === true ||
+        data.workerMode === true)
+
+    if (shouldDiscoverRunId) {
+      runId = await waitForRunIdFromDom()
+    }
+
     const workerModeRequested = Boolean(
       runId || data.worker_mode === true || data.workerMode === true
     )
@@ -460,7 +494,6 @@ const installBridgeScript = () => {
     const rawAction = String(data.action || "").trim().toLowerCase()
     const action = rawAction || (workerModeRequested ? "update_both" : "")
 
-    const rawMode = String(data.mode || "").trim().toLowerCase()
     const normalizedMode = normalizeMode(rawMode)
     const responseMode = (normalizedMode || "bulk") as "single" | "bulk"
 
