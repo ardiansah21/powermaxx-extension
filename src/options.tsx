@@ -185,7 +185,7 @@ const Field = ({
 
 function OptionsPage() {
   const [settings, setSettings] = useState<PowermaxxSettings | null>(null)
-  const [status, setStatus] = useState("Memuat pengaturan...")
+  const [status, setStatus] = useState("")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [saving, setSaving] = useState(false)
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
@@ -197,11 +197,15 @@ function OptionsPage() {
   })
 
   useEffect(() => {
-    loadSettings().then((loaded) => {
-      setSettings(loaded)
-      setStatus("Pengaturan siap.")
-      setStatusTone("success")
-    })
+    loadSettings()
+      .then((loaded) => {
+        setSettings(loaded)
+        setStatus("")
+      })
+      .catch((error) => {
+        setStatus(`Gagal memuat pengaturan: ${String((error as Error)?.message || error)}`)
+        setStatusTone("error")
+      })
   }, [])
 
   if (!settings) {
@@ -271,9 +275,11 @@ function OptionsPage() {
         </p>
       </header>
 
-      <div style={statusStyle(statusTone)} aria-live="polite">
-        {status}
-      </div>
+      {status && (
+        <div style={statusStyle(statusTone)} aria-live="polite">
+          {status}
+        </div>
+      )}
 
       <form onSubmit={save}>
         <div style={formStackStyle}>

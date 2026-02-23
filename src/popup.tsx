@@ -193,7 +193,7 @@ function PopupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showToolsMenu, setShowToolsMenu] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
-  const [status, setStatus] = useState("Memuat sesi...")
+  const [status, setStatus] = useState("")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
@@ -201,6 +201,10 @@ function PopupPage() {
   const setStatusMessage = (message: string, tone: StatusTone = "neutral") => {
     setStatus(message)
     setStatusTone(tone)
+  }
+
+  const clearStatusMessage = () => {
+    setStatus("")
   }
 
   const canLogin = useMemo(
@@ -220,13 +224,8 @@ function PopupPage() {
 
   useEffect(() => {
     void (async () => {
-      const session = await syncSession()
-      setStatusMessage(
-        session.active
-          ? `Sesi aktif: ${session.email || "akun tersimpan"}`
-          : "Belum login.",
-        session.active ? "success" : "warning"
-      )
+      await syncSession()
+      clearStatusMessage()
     })()
   }, [])
 
@@ -673,9 +672,11 @@ function PopupPage() {
         )}
       </div>
 
-      <div style={statusStyle(statusTone)} aria-live="polite">
-        {status}
-      </div>
+      {status && (
+        <div style={statusStyle(statusTone)} aria-live="polite">
+          {status}
+        </div>
+      )}
 
       {!loggedIn && (
         <section style={cardStyle}>
