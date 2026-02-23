@@ -36,3 +36,7 @@
 - Options page sekarang memakai section collapsible per domain (Auth, Shopee, Shopee AWB, TikTok, TikTok AWB) untuk mengurangi kepadatan form.
 - Worker loop dan bulk headless kini punya stall watchdog: jika tidak ada progress melewati threshold, extension kirim event `run_stalled` dengan konteks order aktif (`run_order_id`, `identifier`, `marketplace`), lalu `run_resumed` saat progress lanjut.
 - UAT bulk terbaru memperlihatkan kasus backend stuck di status `running 23/25` (dua order tetap `processing 2/3`); event stall dari extension dipakai sebagai sinyal diagnostik untuk hardening backend.
+- UAT lanjutan 2026-02-23 21:53 WIB:
+  - Single run `9eb731c2-a971-49a7-bf83-49934c5893cb` selesai normal (`completed 1/1`).
+  - Bulk run `dcc7935b-bf1e-4702-b6f2-cf9643fd1fbe` masih `running 18/25` dengan 7 order non-terminal (`claimed/processing` di `3/3`) walau sebagian order lain sudah `timed_out`.
+  - Bulk run `a95050a7-5d3a-4b8d-911f-b1f6579fd206` masih `running 23/25` dengan 2 order `processing 2/3` (`UNKNOWN`, `Fetch marketplace gagal`).

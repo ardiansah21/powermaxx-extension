@@ -66,11 +66,13 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
    - Tokopedia/TikTok Shop: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
    - Shopee: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`.
 3. Bridge mode:
-   - `single`: pass (`run_id` `10111294-920a-4b05-aa15-5a83e0f9922f`) dan TikTok single pass (`run_id` `5e6a3990-755e-46b6-92e2-e97dc83c7eea`), keduanya `completed 1/1`.
-   - `bulk`/`worker`: masih ada blocker pada run `a95050a7-5d3a-4b8d-911f-b1f6579fd206` yang bertahan `running 23/25` dengan 2 order TikTok berstatus `processing 2/3`.
+   - `single`: pass (`run_id` `10111294-920a-4b05-aa15-5a83e0f9922f`, `5e6a3990-755e-46b6-92e2-e97dc83c7eea`, `9eb731c2-a971-49a7-bf83-49934c5893cb`), semuanya `completed 1/1`.
+   - `bulk`/`worker`: masih ada blocker pada:
+     - `a95050a7-5d3a-4b8d-911f-b1f6579fd206` yang bertahan `running 23/25` dengan 2 order TikTok berstatus `processing 2/3` (`error_code: UNKNOWN`, `Fetch marketplace gagal`).
+     - `dcc7935b-bf1e-4702-b6f2-cf9643fd1fbe` yang bertahan `running 18/25` walau sudah ada `timed_out 2`; masih ada 7 order non-terminal (`claimed/processing` di `3/3`) dengan `lease_timeout`/`STALE_PROCESSING`.
 4. Session guard pass:
    - Setelah `Logout`, request popup ditolak dengan error terstruktur.
    - Setelah login ulang email/password, flow kembali sukses.
 5. Aksi lanjut sebelum cutover penuh:
-   - Hardening backend untuk stale `processing` order + auto-finalize run agar tidak tertahan `running`.
-   - Jalankan ulang UAT bulk mixed marketplace (>10 order) sampai `run_finished` konsisten.
+   - Hardening backend untuk memaksa terminalisasi order non-terminal yang sudah mencapai max attempt (`claimed/processing` di `3/3`) lalu auto-finalize run.
+   - Jalankan ulang UAT bulk mixed marketplace (>10 order) sampai `run_finished` konsisten tanpa intervensi manual.
