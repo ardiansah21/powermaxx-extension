@@ -26,5 +26,6 @@
 - `run_order_finished` pada mode bulk kini menyertakan `action_hint`, `technical_error`, dan `duration_ms` agar diagnosa error setara worker mode.
 - Payload report worker menyertakan field kompatibilitas tambahan (`marketplace`, `order_identifier`, `id_type`, `action`, `fetch_result`, `changes`) untuk parity dengan alur legacy.
 - Bulk headless sekarang mendukung fallback auto-marketplace: saat order berlabel `auto`/kosong, runner mencoba marketplace default lalu otomatis mencoba marketplace alternatif.
+- Bulk headless menormalisasi varian field identitas order (`id_type` legacy dan `idType` baru) agar payload bridge lama dan baru tetap kompatibel.
 - Event worker/bulk juga dibroadcast ke runtime message internal (`POWERMAXX_INTERNAL_WORKER_EVENT`) untuk konsumsi UI tab operator.
 - Options page sekarang memakai section collapsible per domain (Auth, Shopee, Shopee AWB, TikTok, TikTok AWB) untuk mengurangi kepadatan form.

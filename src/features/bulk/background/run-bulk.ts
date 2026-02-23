@@ -6,6 +6,7 @@ import {
   sanitizeTechnicalError,
   toAutomationStatus
 } from "~src/core/errors/automation-error"
+import { normalizeIdType, normalizeMarketplace } from "~src/core/messages/guards"
 import type {
   BridgeAction,
   NormalizedOrder,
@@ -28,8 +29,44 @@ interface BulkOrderExecutionResult {
   error?: string
 }
 
-const normalizeBulkIdType = (value: NormalizedOrder["idType"]) =>
-  value === "order_id" || value === "order_sn" ? value : "order_sn"
+const normalizeBulkIdType = (value: unknown): NormalizedOrder["idType"] => {
+  if (value === "order_id" || value === "order_sn") {
+    return value
+  }
+
+  return "order_sn"
+}
+
+const normalizeBulkOrder = (value: unknown): NormalizedOrder | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+
+  const record = value as Record<string, unknown>
+  const id = String(
+    record.id ??
+      record.order_id ??
+      record.order_sn ??
+      record.mp_order_id ??
+      record.mp_order_sn ??
+      ""
+  ).trim()
+
+  if (!id) return null
+
+  const marketplace = normalizeMarketplace(record.marketplace)
+  const idType =
+    normalizeIdType(record.idType ?? record.id_type) ||
+    (record.order_id !== undefined || record.mp_order_id !== undefined
+      ? "order_id"
+      : record.order_sn !== undefined || record.mp_order_sn !== undefined
+        ? "order_sn"
+        : "")
+
+  return {
+    id,
+    marketplace,
+    idType: normalizeBulkIdType(idType)
+  }
+}
 
 const buildBulkOrderCandidates = (
   order: NormalizedOrder,
@@ -96,7 +133,9 @@ export const runBulkHeadless = async (args: {
   settings: PowermaxxSettings
 }) => {
   const { message, senderTabId, settings } = args
-  const orders = Array.isArray(message.orders) ? message.orders : []
+  const orders = (Array.isArray(message.orders) ? message.orders : [])
+    .map((order) => normalizeBulkOrder(order))
+    .filter((order): order is NormalizedOrder => Boolean(order))
 
   if (!orders.length) {
     return {
