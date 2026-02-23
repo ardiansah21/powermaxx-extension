@@ -1,10 +1,10 @@
 import { logger } from "~src/core/logging/logger"
 import {
-  MARKETPLACE_TAB_URL_PATTERNS,
   buildOrderUrl,
   detectMarketplaceFromUrl,
   isMarketplaceOrderDetailUrl,
-  isMarketplaceUrl
+  isMarketplaceUrl,
+  MARKETPLACE_TAB_URL_PATTERNS
 } from "~src/core/marketplace"
 import type {
   ActionMode,
@@ -22,6 +22,7 @@ import { clearAuthSession } from "~src/core/settings/storage"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
+  extractPowermaxxOrderNo,
   formatExportFailureMessage,
   sendExport,
   type FetchResultPayload
@@ -34,9 +35,15 @@ let lastMarketplaceTabUrl = ""
 
 const getMarketplaceContentScriptFiles = () => {
   const manifest = chrome.runtime.getManifest()
-  const allFiles = (manifest.content_scripts || []).flatMap((entry) => entry.js || [])
-  const normalized = allFiles.filter((file) => typeof file === "string" && file.trim())
-  const marketplaceOnly = normalized.filter((file) => file.includes("marketplace"))
+  const allFiles = (manifest.content_scripts || []).flatMap(
+    (entry) => entry.js || []
+  )
+  const normalized = allFiles.filter(
+    (file) => typeof file === "string" && file.trim()
+  )
+  const marketplaceOnly = normalized.filter((file) =>
+    file.includes("marketplace")
+  )
   const picked = marketplaceOnly.length ? marketplaceOnly : normalized
   return Array.from(new Set(picked))
 }
@@ -44,7 +51,9 @@ const getMarketplaceContentScriptFiles = () => {
 export const ensureMarketplaceContentScriptInjected = async (tabId: number) => {
   const files = getMarketplaceContentScriptFiles()
   if (!files.length) {
-    throw new Error("File content script marketplace tidak ditemukan di manifest.")
+    throw new Error(
+      "File content script marketplace tidak ditemukan di manifest."
+    )
   }
 
   await chrome.scripting.executeScript({
@@ -69,7 +78,10 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, message: string) =>
       })
   })
 
-const isAllowedUrl = (url: string, marketplace: Exclude<Marketplace, "auto">) => {
+const isAllowedUrl = (
+  url: string,
+  marketplace: Exclude<Marketplace, "auto">
+) => {
   if (!url) return false
   if (marketplace === "shopee") return url.includes("seller.shopee.co.id")
   return url.includes("seller-id.tokopedia.com")
@@ -107,7 +119,9 @@ const waitForAllowedUrl = async (
     elapsed += intervalMs
   }
 
-  throw new Error(`URL bukan target marketplace. URL terakhir: ${lastUrl || fallbackUrl || "-"}`)
+  throw new Error(
+    `URL bukan target marketplace. URL terakhir: ${lastUrl || fallbackUrl || "-"}`
+  )
 }
 
 const rememberMarketplaceTab = async (tabId?: number | null) => {
@@ -168,14 +182,18 @@ export const resolveMarketplaceTab = async () => {
     const tabs = await chrome.tabs.query({ url: MARKETPLACE_TAB_URL_PATTERNS })
     if (Array.isArray(tabs) && tabs.length) {
       const getLastAccessed = (tab: chrome.tabs.Tab) =>
-        Number((tab as chrome.tabs.Tab & { lastAccessed?: number }).lastAccessed || 0)
+        Number(
+          (tab as chrome.tabs.Tab & { lastAccessed?: number }).lastAccessed || 0
+        )
 
       const sortableTabs = tabs
         .filter((tab): tab is chrome.tabs.Tab => Boolean(tab?.id))
         .sort((a, b) => getLastAccessed(b) - getLastAccessed(a))
 
       const actionable =
-        sortableTabs.find((tab) => isMarketplaceOrderDetailUrl(tab.url || "")) || null
+        sortableTabs.find((tab) =>
+          isMarketplaceOrderDetailUrl(tab.url || "")
+        ) || null
       if (actionable?.id) {
         lastMarketplaceTabId = actionable.id
         lastMarketplaceTabUrl = actionable.url || ""
@@ -293,7 +311,9 @@ const fallbackFetchWithExecuteScript = async (
 
   const payload = result?.result as ContentFetchResponse | undefined
   if (!payload) {
-    const fallbackError = String((result as { error?: unknown })?.error || "").trim()
+    const fallbackError = String(
+      (result as { error?: unknown })?.error || ""
+    ).trim()
     throw new Error(
       fallbackError
         ? `Result executeScript kosong (${fallbackError}).`
@@ -311,25 +331,41 @@ const executeFetchFromTab = async (
   settings: PowermaxxSettings
 ) => {
   try {
-    return await sendContentFetchCommand(tabId, marketplace, actionMode, settings)
+    return await sendContentFetchCommand(
+      tabId,
+      marketplace,
+      actionMode,
+      settings
+    )
   } catch (error) {
-    logger.warn("Primary content message failed, using executeScript fallback", {
-      feature: "fetch-send",
-      domain: marketplace,
-      step: "content-fallback",
-      error: String((error as Error)?.message || error)
-    })
+    logger.warn(
+      "Primary content message failed, using executeScript fallback",
+      {
+        feature: "fetch-send",
+        domain: marketplace,
+        step: "content-fallback",
+        error: String((error as Error)?.message || error)
+      }
+    )
 
     try {
       await ensureMarketplaceContentScriptInjected(tabId)
-      return await sendContentFetchCommand(tabId, marketplace, actionMode, settings)
+      return await sendContentFetchCommand(
+        tabId,
+        marketplace,
+        actionMode,
+        settings
+      )
     } catch (retryError) {
-      logger.warn("Content reinjection retry failed, using executeScript fallback", {
-        feature: "fetch-send",
-        domain: marketplace,
-        step: "content-reinject-retry",
-        error: String((retryError as Error)?.message || retryError)
-      })
+      logger.warn(
+        "Content reinjection retry failed, using executeScript fallback",
+        {
+          feature: "fetch-send",
+          domain: marketplace,
+          step: "content-reinject-retry",
+          error: String((retryError as Error)?.message || retryError)
+        }
+      )
     }
 
     return withTimeout(
@@ -357,6 +393,7 @@ export interface ExecuteFetchSendResult {
     url: string
   }
   orderId?: string
+  orderNo?: string
   openUrl?: string
 }
 
@@ -428,7 +465,12 @@ export const executeFetchSendByOrder = async (
     await waitForAllowedUrl(tab.id, marketplace, orderUrl)
 
     const fetchResult = await withTimeout(
-      executeFetchFromTab(tab.id, marketplace, input.actionMode, input.settings),
+      executeFetchFromTab(
+        tab.id,
+        marketplace,
+        input.actionMode,
+        input.settings
+      ),
       timeoutMs,
       "Timeout proses fetch di tab marketplace."
     )
@@ -482,17 +524,17 @@ export const executeFetchSendByOrder = async (
     }
 
     const orderId = extractPowermaxxOrderId(exportResult.data)
+    const orderNo = extractPowermaxxOrderNo(exportResult.data)
 
     return {
       ok: exportResult.ok,
-      error: exportResult.ok
-        ? ""
-        : formatExportFailureMessage(exportResult),
+      error: exportResult.ok ? "" : formatExportFailureMessage(exportResult),
       marketplace,
       actionMode: input.actionMode,
       fetchResult,
       exportResult,
       orderId,
+      orderNo,
       openUrl:
         orderId && input.settings.auth.baseUrl
           ? `${input.settings.auth.baseUrl}/admin/orders/${encodeURIComponent(orderId)}`
@@ -630,17 +672,17 @@ export const executeFetchSendOnActiveMarketplaceTab = async (
   }
 
   const orderId = extractPowermaxxOrderId(exportResult.data)
+  const orderNo = extractPowermaxxOrderNo(exportResult.data)
 
   return {
     ok: exportResult.ok,
-    error: exportResult.ok
-      ? ""
-      : formatExportFailureMessage(exportResult),
+    error: exportResult.ok ? "" : formatExportFailureMessage(exportResult),
     marketplace,
     actionMode,
     fetchResult,
     exportResult,
     orderId,
+    orderNo,
     openUrl:
       orderId && baseUrl
         ? `${baseUrl}/admin/orders/${encodeURIComponent(orderId)}`

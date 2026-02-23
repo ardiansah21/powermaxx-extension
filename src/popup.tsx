@@ -12,6 +12,7 @@ type RuntimeResult = {
   ok: boolean
   error?: string
   orderId?: string
+  orderNo?: string
   openUrl?: string
   fetchOk?: boolean
   awbOk?: boolean
@@ -238,18 +239,17 @@ function PopupPage() {
 
     try {
       const parsed = new URL(raw)
-      const queryOrderNo = String(parsed.searchParams.get("order_no") || "").trim()
+      const queryOrderNo = String(
+        parsed.searchParams.get("order_no") ||
+          parsed.searchParams.get("orderNo") ||
+          ""
+      ).trim()
       if (queryOrderNo) return queryOrderNo
-
-      const segments = parsed.pathname
-        .split("/")
-        .map((segment) => segment.trim())
-        .filter(Boolean)
-
-      return String(segments[segments.length - 1] || "").trim()
     } catch (_error) {
-      return ""
+      // ignore
     }
+
+    return ""
   }
 
   const setOrderReference = (args?: { url?: string; orderNo?: string }) => {
@@ -422,13 +422,13 @@ function PopupPage() {
 
       setOrderReference({
         url: response.openUrl,
-        orderNo: response.orderId
+        orderNo: response.orderNo
       })
 
+      const orderNo = String(response.orderNo || "").trim()
+
       setStatusMessage(
-        response.orderId
-          ? `Berhasil. Order No: ${response.orderId}`
-          : "Berhasil kirim data.",
+        orderNo ? `Berhasil. Order No: ${orderNo}` : "Berhasil kirim data.",
         "success"
       )
     } catch (error) {
@@ -540,8 +540,10 @@ function PopupPage() {
 
       setOrderReference({
         url: response?.openUrl,
-        orderNo: response?.orderId
+        orderNo: response?.orderNo
       })
+
+      const orderNo = String(response?.orderNo || "").trim()
 
       if (fetchOk && awbOk) {
         const awbLabel = response.awb?.downloaded
@@ -550,8 +552,8 @@ function PopupPage() {
             : "AWB diunduh."
           : "AWB diproses."
         setStatusMessage(
-          response.orderId
-            ? `Sukses. Order No: ${response.orderId}. ${awbLabel}`
+          orderNo
+            ? `Sukses. Order No: ${orderNo}. ${awbLabel}`
             : `Sukses. ${awbLabel}`,
           "success"
         )

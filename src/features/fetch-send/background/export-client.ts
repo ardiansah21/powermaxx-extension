@@ -191,8 +191,12 @@ export const sendExport = async (
 
     const unauthenticated =
       [401, 403, 419].includes(response.status) ||
-      String(data?.message || "").toLowerCase().includes("unauthenticated") ||
-      String(text || "").toLowerCase().includes("unauthenticated")
+      String(data?.message || "")
+        .toLowerCase()
+        .includes("unauthenticated") ||
+      String(text || "")
+        .toLowerCase()
+        .includes("unauthenticated")
 
     return {
       ok: response.ok,
@@ -244,7 +248,7 @@ export const formatExportFailureMessage = (response: SendExportResponse) => {
   return `Export gagal ${response.status}: Error`
 }
 
-const normalizeOrderIdValue = (value: unknown) => {
+const normalizeOrderRefValue = (value: unknown) => {
   if (value === null || value === undefined) return ""
   if (typeof value === "object") return ""
   const text = String(value).trim()
@@ -290,8 +294,61 @@ export const extractPowermaxxOrderId = (data: unknown): string => {
   ]
 
   for (const candidate of candidates) {
-    const id = normalizeOrderIdValue(candidate)
+    const id = normalizeOrderRefValue(candidate)
     if (id) return id
+  }
+
+  return ""
+}
+
+export const extractPowermaxxOrderNo = (data: unknown): string => {
+  if (!data) return ""
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const orderNo = extractPowermaxxOrderNo(item)
+      if (orderNo) return orderNo
+    }
+    return ""
+  }
+
+  if (typeof data !== "object") return ""
+
+  const record = data as Record<string, any>
+  const candidates = [
+    record.order_no,
+    record.orderNo,
+    record.order_number,
+    record.orderNumber,
+    record.data?.order_no,
+    record.data?.orderNo,
+    record.data?.order_number,
+    record.data?.orderNumber,
+    record.data?.order?.order_no,
+    record.data?.order?.orderNo,
+    record.data?.order?.order_number,
+    record.data?.order?.orderNumber,
+    record.order?.order_no,
+    record.order?.orderNo,
+    record.order?.order_number,
+    record.order?.orderNumber,
+    record.result?.order_no,
+    record.result?.orderNo,
+    record.result?.order_number,
+    record.result?.orderNumber,
+    record.orders?.[0]?.order_no,
+    record.orders?.[0]?.orderNo,
+    record.orders?.[0]?.order_number,
+    record.orders?.[0]?.orderNumber,
+    record.data?.orders?.[0]?.order_no,
+    record.data?.orders?.[0]?.orderNo,
+    record.data?.orders?.[0]?.order_number,
+    record.data?.orders?.[0]?.orderNumber
+  ]
+
+  for (const candidate of candidates) {
+    const orderNo = normalizeOrderRefValue(candidate)
+    if (orderNo) return orderNo
   }
 
   return ""

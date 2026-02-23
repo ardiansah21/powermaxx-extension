@@ -22,6 +22,7 @@ import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
+  extractPowermaxxOrderNo,
   formatExportFailureMessage,
   sendExport
 } from "~src/features/fetch-send/background/export-client"
@@ -364,6 +365,7 @@ const handlePopupFetchSend = async (message: RuntimeRequestMessage) => {
     count: 1,
     running: false,
     orderId: result.orderId || "",
+    orderNo: result.orderNo || "",
     openUrl: result.openUrl || ""
   }
 }
@@ -476,6 +478,7 @@ const handlePopupFetchSendAwb = async (message: RuntimeRequestMessage) => {
     count: 1,
     running: false,
     orderId: fetchResult.orderId || "",
+    orderNo: fetchResult.orderNo || "",
     openUrl: fetchResult.openUrl || awbResult.openUrl || "",
     fetchOk: Boolean(fetchResult.ok),
     awbOk: Boolean(awbResult.ok),
@@ -556,6 +559,7 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
   }
 
   const orderId = extractPowermaxxOrderId(exportResult.data)
+  const orderNo = extractPowermaxxOrderNo(exportResult.data)
 
   return {
     ok: Boolean(exportResult.ok),
@@ -564,6 +568,7 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
     count: 1,
     running: false,
     orderId,
+    orderNo,
     openUrl: buildPowermaxxOrderUrl(baseUrl, orderId)
   }
 }
