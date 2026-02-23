@@ -427,10 +427,14 @@ function PopupPage() {
 
       const orderNo = String(response.orderNo || "").trim()
 
-      setStatusMessage(
-        orderNo ? `Berhasil. Order No: ${orderNo}` : "Berhasil kirim data.",
-        "success"
-      )
+      if (orderNo) {
+        setStatusMessage(`Berhasil. Order No: ${orderNo}`, "success")
+      } else {
+        setStatusMessage(
+          "Data berhasil dikirim, tetapi Order No tidak tersedia dari API.",
+          "warning"
+        )
+      }
     } catch (error) {
       setStatusMessage(
         `Fetch + Send gagal: ${String((error as Error)?.message || error)}`,
@@ -551,12 +555,15 @@ function PopupPage() {
             ? `AWB diunduh (${response.awb.fileName}).`
             : "AWB diunduh."
           : "AWB diproses."
-        setStatusMessage(
-          orderNo
-            ? `Sukses. Order No: ${orderNo}. ${awbLabel}`
-            : `Sukses. ${awbLabel}`,
-          "success"
-        )
+
+        if (orderNo) {
+          setStatusMessage(`Sukses. Order No: ${orderNo}. ${awbLabel}`, "success")
+        } else {
+          setStatusMessage(
+            `Sukses, tetapi Order No tidak tersedia dari API. ${awbLabel}`,
+            "warning"
+          )
+        }
         return
       }
 
