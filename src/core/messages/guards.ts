@@ -36,7 +36,7 @@ export const normalizeIdType = (
   return ""
 }
 
-const normalizeRunIdInternal = (value: unknown) => String(value ?? "").trim()
+const normalizeBatchIdInternal = (value: unknown) => String(value ?? "").trim()
 
 const normalizeOrderItem = (
   item: unknown,
@@ -140,10 +140,8 @@ export const normalizeApiPaths = (payload: unknown): BridgeApiPaths => {
   if (!isObject(payload)) return {}
 
   const map: Record<keyof BridgeApiPaths, string[]> = {
-    claimNext: ["claimNext", "claim_next"],
-    heartbeat: ["heartbeat"],
-    report: ["report"],
-    complete: ["complete"]
+    request: ["request", "request_path", "requestPath"],
+    result: ["result", "result_path", "resultPath"]
   }
 
   const normalized: BridgeApiPaths = {}
@@ -162,19 +160,27 @@ export const normalizeApiPaths = (payload: unknown): BridgeApiPaths => {
 }
 
 export const isWorkerModeRequested = (payload: BridgeInboundMessage) => {
-  const runId = normalizeRunIdInternal(payload.run_id || payload.runId)
-  return Boolean(runId || payload.worker_mode === true || payload.workerMode === true)
+  const batchId = normalizeBatchIdInternal(payload.batch_id || payload.batchId)
+  return Boolean(batchId || payload.worker_mode === true || payload.workerMode === true)
 }
 
-export const normalizeRunWorkerId = (value: unknown, fallbackTabId?: number | null) => {
+export const normalizeWorkerId = (value: unknown, fallbackTabId?: number | null) => {
   const raw = String(value ?? "").trim()
-  if (raw) return raw
-  if (fallbackTabId) return `tab-${fallbackTabId}`
-  return `worker-${Date.now()}`
+  const parsed = Number(raw)
+
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.trunc(parsed)
+  }
+
+  if (fallbackTabId && Number.isFinite(fallbackTabId) && fallbackTabId > 0) {
+    return Math.trunc(fallbackTabId)
+  }
+
+  return Math.max(1, Math.trunc(Date.now() % 1000000000))
 }
 
-export const normalizeRunId = (value: unknown) =>
-  normalizeRunIdInternal(value)
+export const normalizeBatchId = (value: unknown) =>
+  normalizeBatchIdInternal(value)
 
 export const toActionMode = (action: BridgeAction) => {
   if (action === "update_income") return "update_income"

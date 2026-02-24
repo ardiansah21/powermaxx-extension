@@ -13,10 +13,8 @@ export interface NormalizedOrder {
 }
 
 export interface BridgeApiPaths {
-  claimNext?: string
-  heartbeat?: string
-  report?: string
-  complete?: string
+  request?: string
+  result?: string
 }
 
 export interface BridgeInboundMessage {
@@ -28,25 +26,14 @@ export interface BridgeInboundMessage {
   order_sn_list?: string[]
   marketplace?: string
   id_type?: string
-  run_id?: string | number
-  runId?: string | number
-  worker_id?: string
-  workerId?: string
+  batch_id?: string | number
+  batchId?: string | number
+  worker_id?: string | number
+  workerId?: string | number
   worker_mode?: boolean
   workerMode?: boolean
   api_paths?: Record<string, unknown>
   apiPaths?: Record<string, unknown>
-  worker_api?: Record<string, unknown>
-  heartbeat_interval_ms?: number
-  heartbeatMs?: number
-  order_timeout_ms?: number
-  orderTimeoutMs?: number
-  request_timeout_ms?: number
-  requestTimeoutMs?: number
-  stall_detection_ms?: number
-  stallDetectionMs?: number
-  complete_on_finish?: boolean
-  completeOnFinish?: boolean
 }
 
 export interface BridgeResponseEnvelope {
@@ -56,8 +43,8 @@ export interface BridgeResponseEnvelope {
   count: number
   mode: BridgeMode
   running: boolean
-  run_id: string
-  worker_id: string
+  batch_id: string
+  worker_id: number | null
 }
 
 export interface BridgeWorkerEventEnvelope {
@@ -77,70 +64,26 @@ export interface RuntimeBridgeRegisterRequest {
   baseUrls?: string[]
 }
 
-export interface RuntimeSingleRequest {
-  type: "POWERMAXX_SINGLE"
-  action: BridgeAction
-  mode: "single"
-  runId?: string
-  run_id?: string
-  workerId?: string
-  worker_id?: string
-  apiPaths?: BridgeApiPaths
-  api_paths?: BridgeApiPaths
-  marketplace?: string
-  id_type?: string
-  heartbeat_interval_ms?: number
-  heartbeatMs?: number
-  order_timeout_ms?: number
-  orderTimeoutMs?: number
-  request_timeout_ms?: number
-  requestTimeoutMs?: number
-  stall_detection_ms?: number
-  stallDetectionMs?: number
-  complete_on_finish?: boolean
-  completeOnFinish?: boolean
-  orders: NormalizedOrder[]
-  sourceUrl?: string
-}
-
-export interface RuntimeBulkRequest {
-  type: "POWERMAXX_BULK"
-  action: BridgeAction
-  mode: "bulk"
-  orders: NormalizedOrder[]
-  sourceUrl?: string
-}
-
-export interface RuntimeRunWorkerRequest {
-  type: "POWERMAXX_RUN_WORKER"
+export interface RuntimeBatchWorkerRequest {
+  type: "POWERMAXX_BATCH_WORKER"
   action: BridgeAction
   mode: BridgeMode
-  runId?: string
-  run_id?: string
-  workerId?: string
-  worker_id?: string
+  batchId?: string
+  batch_id?: string
+  workerId?: string | number
+  worker_id?: string | number
   apiPaths?: BridgeApiPaths
   api_paths?: BridgeApiPaths
   marketplace?: string
   id_type?: string
-  heartbeat_interval_ms?: number
-  heartbeatMs?: number
-  order_timeout_ms?: number
-  orderTimeoutMs?: number
-  request_timeout_ms?: number
-  requestTimeoutMs?: number
-  stall_detection_ms?: number
-  stallDetectionMs?: number
-  complete_on_finish?: boolean
-  completeOnFinish?: boolean
   orders: NormalizedOrder[]
   sourceUrl?: string
 }
 
-export interface RuntimeStopRunWorkerRequest {
-  type: "POWERMAXX_STOP_RUN_WORKER"
-  runId?: string
-  run_id?: string
+export interface RuntimeStopBatchWorkerRequest {
+  type: "POWERMAXX_STOP_BATCH_WORKER"
+  batchId?: string
+  batch_id?: string
 }
 
 export interface RuntimePopupFetchSendRequest {
@@ -179,10 +122,8 @@ export interface RuntimePopupLogoutRequest {
 export type RuntimeRequestMessage =
   | RuntimeGetTargetTabRequest
   | RuntimeBridgeRegisterRequest
-  | RuntimeSingleRequest
-  | RuntimeBulkRequest
-  | RuntimeRunWorkerRequest
-  | RuntimeStopRunWorkerRequest
+  | RuntimeBatchWorkerRequest
+  | RuntimeStopBatchWorkerRequest
   | RuntimePopupFetchSendRequest
   | RuntimePopupFetchOnlyRequest
   | RuntimePopupFetchSendAwbRequest
@@ -221,8 +162,8 @@ export interface RuntimeActionResponse {
   count?: number
   mode?: BridgeMode
   running?: boolean
-  runId?: string
-  workerId?: string
+  batchId?: string
+  workerId?: number | null
   orderId?: string
   orderNo?: string
   openUrl?: string

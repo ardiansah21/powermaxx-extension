@@ -249,6 +249,15 @@ const formatNow = () =>
     second: "2-digit"
   })
 
+const emptyWorkerStats = (): WorkerStats => ({
+  claimed: 0,
+  processed: 0,
+  success: 0,
+  failed: 0,
+  timed_out: 0,
+  report_failed: 0
+})
+
 function BulkTabPage() {
   const [rawInput, setRawInput] = useState("")
   const [marketplace, setMarketplace] = useState<BulkOrderInput["marketplace"]>("auto")
@@ -259,7 +268,8 @@ function BulkTabPage() {
   const [status, setStatus] = useState("Siap menjalankan bulk.")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [busy, setBusy] = useState(false)
-  const [runId, setRunId] = useState("")
+  const [batchIdInput, setBatchIdInput] = useState("")
+  const [batchId, setBatchId] = useState("")
   const [workerId, setWorkerId] = useState("")
   const [stats, setStats] = useState<WorkerStats | null>(null)
   const [logs, setLogs] = useState<string[]>([])
@@ -290,62 +300,83 @@ function BulkTabPage() {
       }
 
       const payload = message.payload || {}
-      const eventRunId = String(payload.run_id || "")
-      if (runId && eventRunId && eventRunId !== runId) return
+      const eventBatchId = String(payload.batch_id || payload.batchId || "")
+      if (batchId && eventBatchId && eventBatchId !== batchId) {
+        return
+      }
 
-      if (message.event === "run_started") {
-        const nextRunId = String(payload.run_id || "")
+      if (message.event === "batch.started") {
+        const nextBatchId = String(payload.batch_id || payload.batchId || "")
         const nextWorkerId = String(payload.worker_id || "")
-        if (nextRunId) setRunId(nextRunId)
+        if (nextBatchId) setBatchId(nextBatchId)
         if (nextWorkerId) setWorkerId(nextWorkerId)
         setBusy(true)
-        setStatus("Bulk sedang berjalan...")
+        setStatus("Batch sedang berjalan...")
         setStatusTone("neutral")
-        appendLog(`Run started (${nextRunId || "-"})`)
+        appendLog(`Batch started (${nextBatchId || "-"})`)
         return
       }
 
-      if (message.event === "run_order_started") {
+      if (message.event === "batch.job.start") {
         const identifier = String(payload.identifier || "-")
         const market = String(payload.marketplace || "-")
-        appendLog(`Start ${identifier} (${market})`)
+        const jobId = String(payload.job_id || payload.jobId || "-")
+        setStats((current) => {
+          const next = current || emptyWorkerStats()
+          return {
+            ...next,
+            claimed: next.claimed + 1
+          }
+        })
+        appendLog(`Start job ${jobId} | ${identifier} (${market})`)
         return
       }
 
-      if (message.event === "run_order_finished") {
+      if (message.event === "batch.job.finish") {
         const statusText = String(payload.status || "")
-        const runOrderId = String(payload.run_order_id || "")
+        const jobId = String(payload.job_id || payload.jobId || "")
         const error = String(payload.error_message || "")
+        const success =
+          payload.success === true || String(payload.status || "") === "success"
+
+        setStats((current) => {
+          const next = current || emptyWorkerStats()
+          return {
+            ...next,
+            processed: next.processed + 1,
+            success: success ? next.success + 1 : next.success,
+            failed: success ? next.failed : next.failed + 1
+          }
+        })
+
         appendLog(
-          `Finish ${runOrderId || "-"} -> ${statusText || "-"}${
+          `Finish job ${jobId || "-"} -> ${statusText || "-"}${
             error ? ` (${error})` : ""
           }`
         )
         return
       }
 
-      if (message.event === "run_finished") {
-        const nextStats = payload.stats as WorkerStats
-        setStats(nextStats || null)
+      if (message.event === "batch.finished") {
+        const stopReason = String(payload.stop_reason || "")
+        const lastError = String(payload.last_error || "")
         setBusy(false)
-        setStatus("Bulk selesai.")
-        setStatusTone("success")
-        appendLog("Run finished")
-        return
-      }
 
-      if (message.event === "run_failed") {
-        const errorMessage = String(payload.error_message || "Run gagal.")
-        setBusy(false)
-        setStatus(`Bulk gagal: ${errorMessage}`)
-        setStatusTone("error")
-        appendLog(`Run failed (${errorMessage})`)
+        if (stopReason === "batch_terminal") {
+          setStatus("Batch selesai.")
+          setStatusTone("success")
+          appendLog("Batch finished")
+        } else {
+          setStatus(`Batch berhenti: ${lastError || stopReason || "unknown"}`)
+          setStatusTone("warning")
+          appendLog(`Batch stopped (${lastError || stopReason || "unknown"})`)
+        }
       }
     }
 
     chrome.runtime.onMessage.addListener(onRuntimeMessage)
     return () => chrome.runtime.onMessage.removeListener(onRuntimeMessage)
-  }, [runId])
+  }, [batchId])
 
   const startBulk = async () => {
     const orders = normalizeOrdersInput({
@@ -360,37 +391,46 @@ function BulkTabPage() {
       return
     }
 
+    const normalizedBatchId = String(batchIdInput || "").trim()
+    if (!normalizedBatchId) {
+      setStatus("Batch ID wajib diisi.")
+      setStatusTone("warning")
+      return
+    }
+
     try {
       setBusy(true)
-      setStats(null)
+      setStats(emptyWorkerStats())
       setLogs([])
       setTotalOrders(orders.length)
-      setStatus("Memulai bulk...")
+      setStatus("Memulai batch worker...")
       setStatusTone("neutral")
 
       const response = await sendRuntimeMessage<RuntimeActionResponse>({
-        type: "POWERMAXX_BULK",
+        type: "POWERMAXX_BATCH_WORKER",
         mode: "bulk",
         action: mapAction(actionMode),
+        batchId: normalizedBatchId,
+        batch_id: normalizedBatchId,
         orders
       })
 
       if (!response?.ok) {
         setBusy(false)
-        setStatus(response?.error || "Bulk gagal dijalankan.")
+        setStatus(response?.error || "Batch gagal dijalankan.")
         setStatusTone("error")
         appendLog(`Start failed (${response?.error || "error"})`)
         return
       }
 
-      setRunId(String(response.runId || ""))
+      setBatchId(String(response.batchId || normalizedBatchId))
       setWorkerId(String(response.workerId || ""))
-      setStatus("Bulk berjalan di background.")
+      setStatus("Batch berjalan di background.")
       setStatusTone("success")
-      appendLog(`Bulk started (${response.runId || "-"})`)
+      appendLog(`Batch started (${response.batchId || normalizedBatchId})`)
     } catch (error) {
       setBusy(false)
-      setStatus(`Gagal memulai bulk: ${String((error as Error)?.message || error)}`)
+      setStatus(`Gagal memulai batch: ${String((error as Error)?.message || error)}`)
       setStatusTone("error")
     }
   }
@@ -400,10 +440,11 @@ function BulkTabPage() {
     setRawInput("")
     setLogs([])
     setStats(null)
-    setRunId("")
+    setBatchIdInput("")
+    setBatchId("")
     setWorkerId("")
     setTotalOrders(0)
-    setStatus("Siap menjalankan bulk.")
+    setStatus("Siap menjalankan batch.")
     setStatusTone("neutral")
   }
 
@@ -412,7 +453,7 @@ function BulkTabPage() {
       <header style={{ marginBottom: 12 }}>
         <h1 style={titleStyle}>Powermaxx Bulk Operator</h1>
         <p style={subtitleStyle}>
-          Jalankan order batch dari extension baru tanpa membuka legacy bulk page.
+          Jalankan worker batch dengan kontrak request/result ke Laravel.
         </p>
       </header>
 
@@ -420,6 +461,20 @@ function BulkTabPage() {
 
       <section style={cardStyle}>
         <div style={grid3Style}>
+          <div>
+            <label style={labelStyle} htmlFor="bulk-batch-id">
+              Batch ID
+            </label>
+            <input
+              id="bulk-batch-id"
+              style={inputStyle}
+              value={batchIdInput}
+              disabled={busy}
+              onChange={(event) => setBatchIdInput(event.target.value)}
+              placeholder="contoh: 123"
+            />
+          </div>
+
           <div>
             <label style={labelStyle} htmlFor="bulk-marketplace">
               Marketplace
@@ -498,7 +553,7 @@ function BulkTabPage() {
             style={buttonStyle("primary", busy)}
             disabled={busy}
             onClick={startBulk}>
-            {busy ? "Sedang berjalan..." : "Jalankan Bulk"}
+            {busy ? "Sedang berjalan..." : "Jalankan Batch"}
           </button>
           <button
             type="button"
@@ -511,11 +566,11 @@ function BulkTabPage() {
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Ringkasan Run</h2>
+        <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>Ringkasan Batch</h2>
         <div style={summaryGridStyle}>
           <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Run ID</div>
-            <div style={summaryValueStyle}>{runId || "-"}</div>
+            <div style={summaryLabelStyle}>Batch ID</div>
+            <div style={summaryValueStyle}>{batchId || "-"}</div>
           </div>
           <div style={summaryCardStyle}>
             <div style={summaryLabelStyle}>Worker ID</div>

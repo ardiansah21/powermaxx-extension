@@ -1,5 +1,5 @@
 export type WorkerStopReason =
-  | "run_terminal"
+  | "batch_terminal"
   | "user_stop"
   | "fatal_config"
   | "unrecoverable_auth"
@@ -28,7 +28,7 @@ export interface RetryableErrorSignal {
 
 export interface FatalErrorSignal {
   type: "fatal_error"
-  stopReason: Exclude<WorkerStopReason, "run_terminal" | "user_stop">
+  stopReason: Exclude<WorkerStopReason, "batch_terminal" | "user_stop">
   status: number
   message: string
 }
@@ -61,7 +61,7 @@ export interface DurableClaimLoopResult {
   stopReason: WorkerStopReason
 }
 
-export interface ResumableRunState {
+export interface ResumableBatchState {
   active: boolean
   stop_reason: WorkerStopReason | null | string
 }
@@ -117,8 +117,10 @@ export const computeRetryBackoffMs = (
   return Math.max(baseMs, Math.min(maxMs, exponential + jitter))
 }
 
-export const selectResumableRunStates = <TRun extends ResumableRunState>(
-  states: TRun[]
+export const selectResumableBatchStates = <
+  TBatch extends ResumableBatchState
+>(
+  states: TBatch[]
 ) =>
   states.filter(
     (state) => state.active === true && !String(state.stop_reason || "").trim()
@@ -153,7 +155,7 @@ export const runDurableClaimLoop = async <TClaim>(
       retryAttempt = 0
 
       if (signal.terminal) {
-        return { stopReason: signal.stopReason || "run_terminal" }
+        return { stopReason: signal.stopReason || "batch_terminal" }
       }
 
       emptyAttempt += 1

@@ -7,47 +7,40 @@ const rootDir = process.cwd()
 
 const checks = [
   {
-    file: "src/features/worker/background/run-worker.ts",
+    file: "src/features/worker/background/batch-worker.ts",
     required: [
-      "run_started",
-      "run_order_started",
-      "run_order_heartbeat",
-      "run_order_finished",
-      "run_finished",
-      "run_failed",
+      "batch.started",
+      "batch.job.start",
+      "batch.job.finish",
+      "batch.finished",
       "worker.loop.start",
       "worker.claim.empty",
       "worker.poll.retry",
       "worker.loop.stop",
-      "idempotency_key",
-      "attempt_no",
-      "error_code",
-      "action_hint",
-      "technical_error"
+      "batch_terminal",
+      "POWERMAXX_BATCH_WORKER",
+      "request",
+      "result"
     ]
   },
   {
-    file: "src/features/bulk/background/run-bulk.ts",
+    file: "src/background.ts",
     required: [
-      "run_started",
-      "run_order_started",
-      "run_order_finished",
-      "run_finished",
-      "run_failed",
-      "error_code",
-      "action_hint",
-      "technical_error",
-      "duration_ms"
+      "POWERMAXX_BATCH_WORKER",
+      "POWERMAXX_STOP_BATCH_WORKER",
+      "startBatchWorker",
+      "stopBatchWorker"
     ]
   },
   {
     file: "src/features/bridge/background/bridge-injector.ts",
     required: [
-      "__pmx_bridge_owner",
-      "__pmx_request_id",
-      "POWERMAXX_RUN_WORKER",
-      "POWERMAXX_SINGLE",
-      "POWERMAXX_BULK"
+      "bridge_probe",
+      "bridge_probe_ack",
+      "POWERMAXX_BATCH_WORKER",
+      "batch_id",
+      "request",
+      "result"
     ]
   },
   {

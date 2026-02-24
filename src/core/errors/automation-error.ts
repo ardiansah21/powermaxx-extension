@@ -78,7 +78,7 @@ export const toAutomationErrorCode = (value: unknown): AutomationErrorCode => {
 
 export const buildAutomationActionHint = (errorCode: AutomationErrorCode) => {
   if (errorCode === "TIMEOUT") {
-    return "Pastikan tab marketplace terbuka, akun login, lalu coba jalankan ulang run."
+    return "Pastikan tab marketplace terbuka, akun login, lalu coba jalankan ulang batch."
   }
   if (errorCode === "EXTENSION_PERMISSION") {
     return "Berikan izin host extension untuk domain marketplace lalu ulangi."
@@ -87,18 +87,18 @@ export const buildAutomationActionHint = (errorCode: AutomationErrorCode) => {
     return "Periksa Base URL API, koneksi jaringan, dan kebijakan CORS server."
   }
   if (errorCode === "AUTH") {
-    return "Login ulang di popup extension, lalu jalankan kembali run."
+    return "Login ulang di popup extension, lalu jalankan kembali batch."
   }
   if (errorCode === "ORDER_NOT_FOUND") {
-    return "Periksa ID order dari backend run queue dan status order di marketplace."
+    return "Periksa ID order dari backend batch job dan status order di marketplace."
   }
   if (errorCode === "INVALID_MARKETPLACE") {
-    return "Periksa mapping marketplace dan id_type dari payload run."
+    return "Periksa mapping marketplace dan id_type dari payload job."
   }
   if (errorCode === "EXTENSION_RUNTIME") {
     return "Reload extension, refresh tab marketplace, lalu ulangi proses."
   }
-  return "Coba ulang run. Jika tetap gagal, kirim log worker ke tim teknis."
+  return "Coba ulang batch. Jika tetap gagal, kirim log worker ke tim teknis."
 }
 
 export const toAutomationStatus = (errorCode: AutomationErrorCode) => {

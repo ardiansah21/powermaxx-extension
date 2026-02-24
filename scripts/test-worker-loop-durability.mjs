@@ -47,7 +47,7 @@ const run = async () => {
     runDurableClaimLoop,
     computeIdleBackoffMs,
     computeRetryBackoffMs,
-    selectResumableRunStates
+    selectResumableBatchStates
   } = core
 
   const sleepCalls1 = []
@@ -70,8 +70,8 @@ const run = async () => {
   })
 
   assert(
-    result1.stopReason === "run_terminal",
-    "scenario1: expected run_terminal stop"
+    result1.stopReason === "batch_terminal",
+    "scenario1: expected batch_terminal stop"
   )
   assert(
     processedClaims1.length === 1 && processedClaims1[0] === "order-1",
@@ -105,7 +105,7 @@ const run = async () => {
   })
 
   assert(
-    result2.stopReason === "run_terminal",
+    result2.stopReason === "batch_terminal",
     "scenario2: expected terminal stop after recovery"
   )
   assert(retryEvents2.length === 2, "scenario2: expected two retry events")
@@ -115,14 +115,14 @@ const run = async () => {
     "scenario2: exponential backoff should increase"
   )
 
-  const resumable = selectResumableRunStates([
-    { run_id: "run-1", active: true, stop_reason: null },
-    { run_id: "run-2", active: true, stop_reason: "run_terminal" },
-    { run_id: "run-3", active: false, stop_reason: null }
+  const resumable = selectResumableBatchStates([
+    { batch_id: "batch-1", active: true, stop_reason: null },
+    { batch_id: "batch-2", active: true, stop_reason: "batch_terminal" },
+    { batch_id: "batch-3", active: false, stop_reason: null }
   ])
   assert(
-    resumable.length === 1 && resumable[0].run_id === "run-1",
-    "scenario3: only active non-terminal run should be resumed"
+    resumable.length === 1 && resumable[0].batch_id === "batch-1",
+    "scenario3: only active non-terminal batch should be resumed"
   )
 
   const idleBackoffBounds = [1, 2, 3, 8].map((attempt) =>

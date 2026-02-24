@@ -1,11 +1,9 @@
 import { logger } from "~src/core/logging/logger"
 import type {
   ActionMode,
-  RuntimeBulkRequest,
+  RuntimeBatchWorkerRequest,
   RuntimeRequestMessage,
-  RuntimeRunWorkerRequest,
-  RuntimeSingleRequest,
-  RuntimeStopRunWorkerRequest
+  RuntimeStopBatchWorkerRequest
 } from "~src/core/messages/contracts"
 import { normalizeBridgeAction } from "~src/core/messages/guards"
 import { normalizeBaseUrl, SETTINGS_KEY } from "~src/core/settings/schema"
@@ -19,7 +17,6 @@ import {
   bindBridgeAutoInjection,
   ensureBridgeForBaseUrls
 } from "~src/features/bridge/background/bridge-register"
-import { runBulkHeadless } from "~src/features/bulk/background/run-bulk"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
@@ -38,10 +35,10 @@ import {
   saveViewerPayload
 } from "~src/features/viewer/shared/storage"
 import {
-  resumePersistedRunWorkers,
-  startRunWorker,
-  stopRunWorker
-} from "~src/features/worker/background/run-worker"
+  resumePersistedBatchWorkers,
+  startBatchWorker,
+  stopBatchWorker
+} from "~src/features/worker/background/batch-worker"
 
 const syncBridgeFromSettings = async () => {
   const settings = await loadSettings()
@@ -57,7 +54,7 @@ const syncBridgeFromSettings = async () => {
 const resumeWorkersFromStorage = async () => {
   try {
     const settings = await loadSettings()
-    await resumePersistedRunWorkers({ settings })
+    await resumePersistedBatchWorkers({ settings })
   } catch (error) {
     logger.warn("Failed to resume persisted workers", {
       feature: "worker",
@@ -592,50 +589,14 @@ const handlePopupSendViewer = async (message: RuntimeRequestMessage) => {
   }
 }
 
-const handleSingle = async (
-  message: RuntimeSingleRequest,
-  senderTabId?: number | null
-) => {
-  const settings = await loadSettings()
-  const action = normalizeBridgeAction(message.action) || "update_both"
-  const runId = String(message.runId || message.run_id || "").trim()
-
-  if (!runId) {
-    logger.warn("Bridge single rejected without run_id", {
-      feature: "bridge",
-      domain: "single",
-      step: "validation",
-      senderTabId: senderTabId || null,
-      orders: Array.isArray(message.orders) ? message.orders.length : 0
-    })
-
-    return {
-      ok: false,
-      running: false,
-      mode: "single" as const,
-      error: "run_id wajib diisi untuk single mode (run-centric)."
-    }
-  }
-
-  return startRunWorker({
-    message: {
-      ...message,
-      action,
-      mode: "single"
-    },
-    senderTabId,
-    settings
-  })
-}
-
-const handleRunWorker = async (
-  message: RuntimeRunWorkerRequest,
+const handleBatchWorker = async (
+  message: RuntimeBatchWorkerRequest,
   senderTabId?: number | null
 ) => {
   const settings = await loadSettings()
   const action = normalizeBridgeAction(message.action) || "update_both"
 
-  return startRunWorker({
+  return startBatchWorker({
     message: {
       ...message,
       action
@@ -645,33 +606,17 @@ const handleRunWorker = async (
   })
 }
 
-const handleStopRunWorker = async (message: RuntimeStopRunWorkerRequest) => {
-  const runId = String(message.runId || message.run_id || "").trim()
-  if (!runId) {
+const handleStopBatchWorker = async (message: RuntimeStopBatchWorkerRequest) => {
+  const batchId = String(message.batchId || message.batch_id || "").trim()
+
+  if (!batchId) {
     return {
       ok: false,
-      error: "run_id wajib diisi untuk stop worker."
+      error: "batch_id wajib diisi untuk stop worker."
     }
   }
 
-  return stopRunWorker({ runId })
-}
-
-const handleBulk = async (
-  message: RuntimeBulkRequest,
-  senderTabId?: number | null
-) => {
-  const settings = await loadSettings()
-  const action = normalizeBridgeAction(message.action) || "update_both"
-
-  return runBulkHeadless({
-    message: {
-      ...message,
-      action
-    },
-    senderTabId,
-    settings
-  })
+  return stopBatchWorker({ batchId })
 }
 
 const onRuntimeMessage = (
@@ -771,23 +716,13 @@ const onRuntimeMessage = (
     return true
   }
 
-  if (message.type === "POWERMAXX_SINGLE") {
-    reply(handleSingle(message, senderTabId))
+  if (message.type === "POWERMAXX_BATCH_WORKER") {
+    reply(handleBatchWorker(message, senderTabId))
     return true
   }
 
-  if (message.type === "POWERMAXX_RUN_WORKER") {
-    reply(handleRunWorker(message, senderTabId))
-    return true
-  }
-
-  if (message.type === "POWERMAXX_STOP_RUN_WORKER") {
-    reply(handleStopRunWorker(message))
-    return true
-  }
-
-  if (message.type === "POWERMAXX_BULK") {
-    reply(handleBulk(message, senderTabId))
+  if (message.type === "POWERMAXX_STOP_BATCH_WORKER") {
+    reply(handleStopBatchWorker(message))
     return true
   }
 }
