@@ -536,7 +536,6 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
       ? null
       : String(fetchResult.error || "Fetch marketplace gagal."),
     technical_error: null,
-    changes: [],
     result: {
       marketplace: claim.marketplace,
       identifier: claim.identifier,
