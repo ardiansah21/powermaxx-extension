@@ -258,6 +258,8 @@ const buttonStyle = (
 
 function PopupPage() {
   const headerWrapRef = useRef<HTMLDivElement | null>(null)
+  const bridgeCheckSeqRef = useRef(0)
+  const bridgeCheckTimeoutRef = useRef<number | null>(null)
   const [baseUrl, setBaseUrl] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -337,27 +339,48 @@ function PopupPage() {
   }
 
   const syncBridgeStatus = async (attemptRepair = false) => {
+    const checkSeq = bridgeCheckSeqRef.current + 1
+    bridgeCheckSeqRef.current = checkSeq
+
+    if (bridgeCheckTimeoutRef.current !== null) {
+      window.clearTimeout(bridgeCheckTimeoutRef.current)
+      bridgeCheckTimeoutRef.current = null
+    }
+
     try {
       setBridgeBusy(true)
       setBridgeStatus("checking")
       setBridgeHint("")
 
-      const response = (await Promise.race([
-        sendRuntimeMessage<BridgeHealthRuntimeResult>({
-          type: attemptRepair
-            ? "POWERMAXX_POPUP_BRIDGE_REPAIR"
-            : "POWERMAXX_POPUP_BRIDGE_STATUS"
-        }),
-        new Promise<BridgeHealthRuntimeResult>((resolve) => {
-          window.setTimeout(() => {
-            resolve({
-              ok: false,
-              status: "inactive",
-              reason: "Bridge check timeout. Coba klik lagi."
-            })
-          }, 3500)
-        })
-      ])) as BridgeHealthRuntimeResult
+      const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+      if (attemptRepair && normalizedBaseUrl) {
+        const granted = await ensureHostPermission(normalizedBaseUrl)
+        if (!granted) {
+          setBridgeStatus("inactive")
+          setBridgeHint("Host permission ditolak. Bridge tidak bisa diaktifkan.")
+          return
+        }
+      }
+
+      bridgeCheckTimeoutRef.current = window.setTimeout(() => {
+        if (bridgeCheckSeqRef.current !== checkSeq) {
+          return
+        }
+
+        setBridgeBusy(false)
+        setBridgeStatus("inactive")
+        setBridgeHint("Bridge check timeout. Coba klik lagi.")
+      }, 3500)
+
+      const response = await sendRuntimeMessage<BridgeHealthRuntimeResult>({
+        type: attemptRepair
+          ? "POWERMAXX_POPUP_BRIDGE_REPAIR"
+          : "POWERMAXX_POPUP_BRIDGE_STATUS"
+      })
+
+      if (bridgeCheckSeqRef.current !== checkSeq) {
+        return
+      }
 
       if (response?.status === "active") {
         setBridgeStatus("active")
@@ -368,10 +391,21 @@ function PopupPage() {
       setBridgeStatus("inactive")
       setBridgeHint(String(response?.reason || "Bridge tidak aktif."))
     } catch (error) {
+      if (bridgeCheckSeqRef.current !== checkSeq) {
+        return
+      }
+
       setBridgeStatus("inactive")
       setBridgeHint(String((error as Error)?.message || error || "Bridge check gagal."))
     } finally {
-      setBridgeBusy(false)
+      if (bridgeCheckTimeoutRef.current !== null) {
+        window.clearTimeout(bridgeCheckTimeoutRef.current)
+        bridgeCheckTimeoutRef.current = null
+      }
+
+      if (bridgeCheckSeqRef.current === checkSeq) {
+        setBridgeBusy(false)
+      }
     }
   }
 
@@ -428,6 +462,13 @@ function PopupPage() {
       await applyBridgeStatusFromCache(session.baseUrl)
       clearStatusMessage()
     })()
+
+    return () => {
+      if (bridgeCheckTimeoutRef.current !== null) {
+        window.clearTimeout(bridgeCheckTimeoutRef.current)
+        bridgeCheckTimeoutRef.current = null
+      }
+    }
   }, [])
 
   useEffect(() => {

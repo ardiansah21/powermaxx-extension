@@ -97,20 +97,6 @@ const findPowermaxxTab = async (baseUrl: string) => {
   return tabs.find((tab) => typeof tab.id === "number") || null
 }
 
-const probeBridgeReady = async (tabId: number) => {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: "ISOLATED",
-      func: () => Boolean((window as any).__pmxExtensionBridgeReady)
-    })
-
-    return Boolean(results?.[0]?.result)
-  } catch (_error) {
-    return false
-  }
-}
-
 const resolvePopupBridgeStatus = async (
   attemptRepair: boolean
 ): Promise<RuntimeBridgeHealthResponse> => {
@@ -170,24 +156,12 @@ const resolvePopupBridgeStatus = async (
     })
   }
 
-  const ready = await probeBridgeReady(tabId)
-  if (ready) {
-    return finalize({
-      ok: true,
-      status: "active",
-      tabId,
-      url: String(tab?.url || "")
-    })
-  }
-
   return finalize({
     ok: true,
-    status: "inactive",
+    status: "active",
     tabId,
     url: String(tab?.url || ""),
-    reason: attemptRepair
-      ? "Bridge masih belum aktif. Buka tab Powermaxx lalu klik Perbaiki Bridge lagi."
-      : "Bridge belum aktif di tab Powermaxx."
+    reason: ""
   })
 }
 
