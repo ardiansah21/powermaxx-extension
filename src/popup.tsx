@@ -26,6 +26,14 @@ type RuntimeResult = {
   }
 }
 
+type BridgeUiStatus = "checking" | "active" | "inactive"
+
+type BridgeHealthRuntimeResult = {
+  ok: boolean
+  status?: "active" | "inactive"
+  reason?: string
+}
+
 const SPACE = {
   sm: 8,
   md: 12,
@@ -70,6 +78,36 @@ const titleSubStyle: React.CSSProperties = {
   fontSize: 11,
   color: "#64748b",
   overflowWrap: "anywhere"
+}
+
+const bridgeLineStyle: React.CSSProperties = {
+  marginTop: 2,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap"
+}
+
+const bridgeTextStyle = (status: BridgeUiStatus): React.CSSProperties => ({
+  ...titleSubStyle,
+  margin: 0,
+  color:
+    status === "active"
+      ? "#166534"
+      : status === "inactive"
+        ? "#991b1b"
+        : "#64748b"
+})
+
+const bridgeActionButtonStyle: React.CSSProperties = {
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  margin: 0,
+  fontSize: 11,
+  color: "#1d4ed8",
+  textDecoration: "underline",
+  cursor: "pointer"
 }
 
 const headerActionsStyle: React.CSSProperties = {
@@ -223,6 +261,9 @@ function PopupPage() {
   const [pendingOrderNo, setPendingOrderNo] = useState("")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeUiStatus>("checking")
+  const [bridgeHint, setBridgeHint] = useState("")
+  const [bridgeBusy, setBridgeBusy] = useState(false)
 
   const setStatusMessage = (message: string, tone: StatusTone = "neutral") => {
     setStatus(message)
@@ -231,6 +272,34 @@ function PopupPage() {
 
   const clearStatusMessage = () => {
     setStatus("")
+  }
+
+  const syncBridgeStatus = async (attemptRepair = false) => {
+    try {
+      setBridgeBusy(true)
+      setBridgeStatus("checking")
+      setBridgeHint("")
+
+      const response = await sendRuntimeMessage<BridgeHealthRuntimeResult>({
+        type: attemptRepair
+          ? "POWERMAXX_POPUP_BRIDGE_REPAIR"
+          : "POWERMAXX_POPUP_BRIDGE_STATUS"
+      })
+
+      if (response?.status === "active") {
+        setBridgeStatus("active")
+        setBridgeHint("")
+        return
+      }
+
+      setBridgeStatus("inactive")
+      setBridgeHint(String(response?.reason || "Bridge tidak aktif."))
+    } catch (error) {
+      setBridgeStatus("inactive")
+      setBridgeHint(String((error as Error)?.message || error || "Bridge check gagal."))
+    } finally {
+      setBridgeBusy(false)
+    }
   }
 
   const extractOrderNoFromUrl = (value?: string) => {
@@ -283,6 +352,7 @@ function PopupPage() {
   useEffect(() => {
     void (async () => {
       await syncSession()
+      await syncBridgeStatus()
       clearStatusMessage()
     })()
   }, [])
@@ -603,6 +673,38 @@ function PopupPage() {
             <p style={titleSubStyle}>
               Base URL: {baseUrl || "Belum diatur di options."}
             </p>
+            <div style={bridgeLineStyle}>
+              <span style={bridgeTextStyle(bridgeStatus)}>
+                Bridge:{" "}
+                {bridgeStatus === "active"
+                  ? "ACTIVE"
+                  : bridgeStatus === "inactive"
+                    ? "INACTIVE"
+                    : "CHECKING"}
+              </span>
+              <button
+                type="button"
+                style={{
+                  ...bridgeActionButtonStyle,
+                  opacity: bridgeBusy ? 0.6 : 1,
+                  cursor: bridgeBusy ? "default" : "pointer"
+                }}
+                disabled={bridgeBusy}
+                onClick={() =>
+                  void syncBridgeStatus(bridgeStatus === "inactive")
+                }>
+                {bridgeBusy
+                  ? "Checking..."
+                  : bridgeStatus === "inactive"
+                    ? "Perbaiki Bridge"
+                    : "Refresh Status"}
+              </button>
+            </div>
+            {bridgeStatus === "inactive" && bridgeHint && (
+              <p style={{ ...titleSubStyle, margin: "2px 0 0", color: "#991b1b" }}>
+                {bridgeHint}
+              </p>
+            )}
           </div>
           <div style={headerActionsStyle}>
             <button

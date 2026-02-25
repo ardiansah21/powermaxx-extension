@@ -47,7 +47,7 @@ npm run package
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, `Pengaturan`, dan `Logout`.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, `Pengaturan`, dan `Logout`, plus indikator status bridge minimalis (`ACTIVE/INACTIVE`) di bawah `Base URL`.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -66,13 +66,14 @@ npm run package
 2. Jalankan `npm run dev`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
-5. Di popup klik `Fetch + Send`.
-6. Uji `Fetch + Send + AWB` dan `Download AWB`.
-7. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
-8. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
-9. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
-10. Verifikasi response status dan event bridge untuk mode web integration.
-11. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
+5. Pastikan indikator bridge di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
+6. Di popup klik `Fetch + Send`.
+7. Uji `Fetch + Send + AWB` dan `Download AWB`.
+8. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
+9. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
+10. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
+11. Verifikasi response status dan event bridge untuk mode web integration.
+12. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
 
 - `worker.loop.start`
 - `worker.claim.empty`
@@ -104,6 +105,7 @@ npm run package
 - Jika muncul `Sesi login belum tersedia`: login dulu dari Popup (email + password).
 - Jika `Tab marketplace tidak ditemukan`: fokus ke tab seller aktif.
 - Jika `Bridge belum aktif`: grant optional host permission dan register bridge origin.
+- Jika status popup `Bridge: INACTIVE`: klik `Perbaiki Bridge`, lalu pastikan tab Powermaxx terbuka dan klik ulang.
 - Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
 - Jika AWB gagal: cek endpoint AWB di Options, pastikan tab yang aktif adalah halaman detail order marketplace.
 - Jika bulk mode auto gagal: cek `defaultMarketplace` di Options, lalu pastikan order memang tersedia di marketplace fallback.

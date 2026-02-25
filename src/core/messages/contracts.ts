@@ -119,6 +119,14 @@ export interface RuntimePopupLogoutRequest {
   type: "POWERMAXX_POPUP_LOGOUT"
 }
 
+export interface RuntimePopupBridgeStatusRequest {
+  type: "POWERMAXX_POPUP_BRIDGE_STATUS"
+}
+
+export interface RuntimePopupBridgeRepairRequest {
+  type: "POWERMAXX_POPUP_BRIDGE_REPAIR"
+}
+
 export type RuntimeRequestMessage =
   | RuntimeGetTargetTabRequest
   | RuntimeBridgeRegisterRequest
@@ -131,6 +139,8 @@ export type RuntimeRequestMessage =
   | RuntimePopupSendViewerRequest
   | RuntimePopupLoginRequest
   | RuntimePopupLogoutRequest
+  | RuntimePopupBridgeStatusRequest
+  | RuntimePopupBridgeRepairRequest
 
 export interface RuntimeTargetTabResponse {
   ok: boolean
@@ -170,6 +180,14 @@ export interface RuntimeActionResponse {
   fetchOk?: boolean
   awbOk?: boolean
   awb?: RuntimeAwbResult
+}
+
+export interface RuntimeBridgeHealthResponse {
+  ok: boolean
+  status: "active" | "inactive"
+  reason?: string
+  tabId?: number
+  url?: string
 }
 
 export interface ContentFetchRequest {

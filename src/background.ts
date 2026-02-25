@@ -1,6 +1,7 @@
 import { logger } from "~src/core/logging/logger"
 import type {
   ActionMode,
+  RuntimeBridgeHealthResponse,
   RuntimeBatchWorkerRequest,
   RuntimeRequestMessage,
   RuntimeStopBatchWorkerRequest
@@ -17,6 +18,7 @@ import {
   bindBridgeAutoInjection,
   ensureBridgeForBaseUrls
 } from "~src/features/bridge/background/bridge-register"
+import { injectBridgeScriptToTab } from "~src/features/bridge/background/bridge-injector"
 import {
   buildExportPayload,
   extractPowermaxxOrderId,
@@ -49,6 +51,107 @@ const syncBridgeFromSettings = async () => {
   ]
 
   await ensureBridgeForBaseUrls(urls)
+}
+
+const buildTabUrlPattern = (baseUrl: string) => {
+  try {
+    const origin = new URL(baseUrl).origin
+    return `${origin}/*`
+  } catch (_error) {
+    return ""
+  }
+}
+
+const findPowermaxxTab = async (baseUrl: string) => {
+  const pattern = buildTabUrlPattern(baseUrl)
+  if (!pattern) return null
+
+  const tabs = await chrome.tabs.query({ url: [pattern] })
+
+  return tabs.find((tab) => typeof tab.id === "number") || null
+}
+
+const probeBridgeReady = async (tabId: number) => {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "ISOLATED",
+      func: () => Boolean((window as any).__pmxExtensionBridgeReady)
+    })
+
+    return Boolean(results?.[0]?.result)
+  } catch (_error) {
+    return false
+  }
+}
+
+const resolvePopupBridgeStatus = async (
+  attemptRepair: boolean
+): Promise<RuntimeBridgeHealthResponse> => {
+  const settings = await loadSettings()
+  const baseUrl = normalizeBaseUrl(settings.auth.baseUrl || "")
+
+  if (!baseUrl) {
+    return {
+      ok: true,
+      status: "inactive",
+      reason: "Base URL belum diatur."
+    }
+  }
+
+  if (attemptRepair) {
+    const matches = await ensureBridgeForBaseUrls([baseUrl])
+    if (!matches.length) {
+      return {
+        ok: true,
+        status: "inactive",
+        reason: "Host permission belum aktif untuk Base URL ini."
+      }
+    }
+  }
+
+  const tab = await findPowermaxxTab(baseUrl)
+  const tabId = tab?.id
+
+  if (typeof tabId !== "number") {
+    return {
+      ok: true,
+      status: "inactive",
+      reason: "Tab Powermaxx belum terbuka."
+    }
+  }
+
+  try {
+    await injectBridgeScriptToTab(tabId)
+  } catch (_error) {
+    return {
+      ok: true,
+      status: "inactive",
+      tabId,
+      url: String(tab?.url || ""),
+      reason: "Gagal inject bridge ke tab Powermaxx."
+    }
+  }
+
+  const ready = await probeBridgeReady(tabId)
+  if (ready) {
+    return {
+      ok: true,
+      status: "active",
+      tabId,
+      url: String(tab?.url || "")
+    }
+  }
+
+  return {
+    ok: true,
+    status: "inactive",
+    tabId,
+    url: String(tab?.url || ""),
+    reason: attemptRepair
+      ? "Bridge masih belum aktif. Buka tab Powermaxx lalu klik Perbaiki Bridge lagi."
+      : "Bridge belum aktif di tab Powermaxx."
+  }
 }
 
 const resumeWorkersFromStorage = async () => {
@@ -688,6 +791,16 @@ const onRuntimeMessage = (
 
   if (message.type === "POWERMAXX_POPUP_LOGOUT") {
     reply(handlePopupLogout(message))
+    return true
+  }
+
+  if (message.type === "POWERMAXX_POPUP_BRIDGE_STATUS") {
+    reply(resolvePopupBridgeStatus(false))
+    return true
+  }
+
+  if (message.type === "POWERMAXX_POPUP_BRIDGE_REPAIR") {
+    reply(resolvePopupBridgeStatus(true))
     return true
   }
 
