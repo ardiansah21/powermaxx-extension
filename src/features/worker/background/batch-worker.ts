@@ -701,6 +701,8 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
     workerId: session.workerId,
     job_id: claim.id,
     jobId: claim.id,
+    attempt_no: claim.attemptNo,
+    attemptNo: claim.attemptNo,
     status: fetchResult?.ok ? "success" : "failed",
     error_code: fetchResult?.ok ? null : "fetch_failed",
     error_message: fetchResult?.ok
@@ -726,6 +728,17 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
   }
 
   const resultResponse = await submitJobResult(session, claim, payload)
+  const resultData =
+    resultResponse.data && typeof resultResponse.data === "object"
+      ? (resultResponse.data as Record<string, unknown>)
+      : null
+  const acceptedDuplicate = Boolean(resultData?.accepted_duplicate)
+  const duplicateReason = String(resultData?.duplicate_reason || "").trim()
+  const isStaleDuplicate =
+    acceptedDuplicate &&
+    ["worker_mismatch", "attempt_mismatch", "job_not_processing"].includes(
+      duplicateReason
+    )
 
   if (!resultResponse.ok && resultResponse.fatal === true) {
     session.stopRequested = true
@@ -734,6 +747,13 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
   } else if (!resultResponse.ok) {
     session.lastError =
       resultResponse.message || String(payload.error_message || "Result endpoint failed.")
+  } else if (isStaleDuplicate) {
+    session.lastError = null
+    logWorker("info", "worker.result.duplicate_ignored", session, {
+      job_id: claim.id,
+      attempt_no: claim.attemptNo,
+      duplicate_reason: duplicateReason
+    })
   } else if (payload.status !== "success") {
     session.lastError = String(payload.error_message || "Fetch marketplace gagal.")
   } else {

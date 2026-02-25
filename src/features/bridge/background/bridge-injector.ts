@@ -238,11 +238,6 @@ const installBridgeScript = () => {
     const mode = (normalizeMode(data.mode) || "bulk") as "single" | "bulk"
     const orders = normalizeOrders(data)
     const batchId = normalizeBatchId(data.batch_id || data.batchId)
-    const workerMode = Boolean(
-      data.worker_mode === true ||
-        data.workerMode === true ||
-        batchId
-    )
 
     if (!action) {
       postResponse(
@@ -269,22 +264,6 @@ const installBridgeScript = () => {
           mode,
           running: false,
           batch_id: "",
-          worker_id: null
-        },
-        requestId
-      )
-      return
-    }
-
-    if (!workerMode && mode === "single" && orders.length !== 1) {
-      postResponse(
-        {
-          ok: false,
-          error: "Mode single hanya untuk 1 order.",
-          count: orders.length,
-          mode,
-          running: false,
-          batch_id: batchId,
           worker_id: null
         },
         requestId

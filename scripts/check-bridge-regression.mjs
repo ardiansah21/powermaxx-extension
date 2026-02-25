@@ -17,8 +17,10 @@ const checks = [
       "worker.claim.empty",
       "worker.poll.retry",
       "worker.loop.stop",
+      "worker.result.duplicate_ignored",
       "batch_terminal",
       "POWERMAXX_BATCH_WORKER",
+      "attempt_no",
       "request",
       "result"
     ]
