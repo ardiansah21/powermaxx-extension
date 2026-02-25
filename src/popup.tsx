@@ -97,15 +97,9 @@ const bridgeLineStyle: React.CSSProperties = {
   flexWrap: "wrap"
 }
 
-const bridgeTextStyle = (status: BridgeUiStatus): React.CSSProperties => ({
+const bridgeTextStyle = (_status: BridgeUiStatus): React.CSSProperties => ({
   ...titleSubStyle,
-  margin: 0,
-  color:
-    status === "active"
-      ? "#166534"
-      : status === "inactive"
-        ? "#991b1b"
-        : "#64748b"
+  margin: 0
 })
 
 const bridgeActionButtonStyle: React.CSSProperties = {
@@ -113,9 +107,11 @@ const bridgeActionButtonStyle: React.CSSProperties = {
   background: "transparent",
   padding: 0,
   margin: 0,
-  fontSize: 11,
-  color: "#1d4ed8",
-  textDecoration: "underline",
+  width: 16,
+  height: 16,
+  color: "#64748b",
+  display: "grid",
+  placeItems: "center",
   cursor: "pointer"
 }
 
@@ -137,6 +133,24 @@ const iconButtonStyle: React.CSSProperties = {
   placeItems: "center",
   cursor: "pointer"
 }
+
+const userInitialButtonStyle = (disabled = false): React.CSSProperties => ({
+  width: 34,
+  height: 34,
+  border: "1px solid #94a3b8",
+  borderRadius: 9999,
+  background: "#ffffff",
+  color: "#0f172a",
+  padding: 0,
+  display: "grid",
+  placeItems: "center",
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.2,
+  textTransform: "uppercase",
+  cursor: disabled ? "default" : "pointer",
+  opacity: disabled ? 0.6 : 1
+})
 
 const toolsMenuStyle: React.CSSProperties = {
   position: "absolute",
@@ -255,6 +269,26 @@ const buttonStyle = (
   cursor: disabled ? "default" : "pointer",
   opacity: disabled ? 0.6 : 1
 })
+
+const buildUserInitials = (rawEmail: string) => {
+  const emailText = String(rawEmail || "").trim()
+  if (!emailText) {
+    return "U"
+  }
+
+  const local = (emailText.split("@")[0] || emailText).trim()
+  const parts = local.split(/[._\-\s]+/).filter(Boolean)
+
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase()
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase()
+  }
+
+  return local.slice(0, 2).toUpperCase()
+}
 
 function PopupPage() {
   const headerWrapRef = useRef<HTMLDivElement | null>(null)
@@ -441,6 +475,7 @@ function PopupPage() {
     () => Boolean(String(email).trim() && password),
     [email, password]
   )
+  const userInitials = useMemo(() => buildUserInitials(email), [email])
 
   const syncSession = async () => {
     const settings = await loadSettings()
@@ -808,16 +843,87 @@ function PopupPage() {
                 disabled={bridgeBusy}
                 onClick={() =>
                   void syncBridgeStatus(bridgeStatus === "inactive")
+                }
+                aria-label={
+                  bridgeBusy
+                    ? "Checking bridge status"
+                    : bridgeStatus === "inactive"
+                      ? "Perbaiki Bridge"
+                      : "Refresh Status"
                 }>
-                {bridgeBusy
-                  ? "Checking..."
-                  : bridgeStatus === "inactive"
-                    ? "Perbaiki Bridge"
-                    : "Refresh Status"}
+                {bridgeBusy ? (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="9"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeDasharray="4 3"
+                    />
+                  </svg>
+                ) : bridgeStatus === "inactive" ? (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <path
+                      d="M4 12H8L10 8L14 16L16 12H20"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true">
+                    <path
+                      d="M20 6V10H16"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M4 18V14H8"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M6.5 10.5C7.3 8.6 9.1 7.2 11.2 7"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M17.5 13.5C16.7 15.4 14.9 16.8 12.8 17"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                )}
               </button>
             </div>
             {bridgeStatus === "inactive" && bridgeHint && (
-              <p style={{ ...titleSubStyle, margin: "2px 0 0", color: "#991b1b" }}>
+              <p style={{ ...titleSubStyle, margin: "2px 0 0" }}>
                 {bridgeHint}
               </p>
             )}
@@ -873,6 +979,16 @@ function PopupPage() {
                 />
               </svg>
             </button>
+            {loggedIn && (
+              <button
+                type="button"
+                style={userInitialButtonStyle(busyLogin || busyAction)}
+                disabled={busyLogin || busyAction}
+                onClick={handleLogout}
+                aria-label="Logout">
+                {userInitials}
+              </button>
+            )}
           </div>
         </header>
 
@@ -996,47 +1112,6 @@ function PopupPage() {
                   <span>Pengaturan</span>
                 </span>
               </button>
-              {loggedIn && (
-                <button
-                  type="button"
-                  style={{
-                    ...buttonStyle("neutral", busyLogin || busyAction),
-                    ...fullButtonStyle
-                  }}
-                  disabled={busyLogin || busyAction}
-                  onClick={handleLogout}>
-                  <span style={menuItemStyle}>
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden="true">
-                      <path
-                        d="M10 4H5.5C4.7 4 4 4.7 4 5.5V18.5C4 19.3 4.7 20 5.5 20H10"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M14 8L19 12L14 16"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M9 12H19"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <span>Logout</span>
-                  </span>
-                </button>
-              )}
             </div>
           </div>
         )}

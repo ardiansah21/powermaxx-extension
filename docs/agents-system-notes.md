@@ -9,11 +9,11 @@
 - Bulk mode berjalan serial di background dan melaporkan progress event ke bridge source tab.
 - Error logging mengikuti format terstruktur: `feature`, `domain`, `step`, `context`.
 - Popup login disederhanakan: saat belum login hanya menampilkan form `Email + Password`; section `Fetch + Send` disembunyikan sampai sesi aktif.
-- Menu sesi di popup hanya tersedia saat login dan saat ini hanya memuat aksi `Logout` (fitur `Ganti Akun` dihapus untuk menghindari state UI ganda).
+- Logout popup sekarang dipindah ke tombol lingkaran inisial user di header (di samping tombol menu), sehingga tidak lagi berada di dalam group menu action.
 - Banner status popup/options hanya muncul saat ada aksi/error; status sesi awal tidak ditampilkan agar area kerja tetap ringkas.
 - Popup menampilkan indikator `Bridge: ACTIVE/INACTIVE/CHECKING` tepat di bawah `Base URL`, dengan cache status di `chrome.storage.local`; check bridge hanya saat user menekan `Refresh Status` atau `Perbaiki Bridge` (tanpa polling otomatis dan tanpa auto-check saat popup dibuka).
 - Popup sesi aktif sekarang memakai pola `Aksi Utama` saja (tanpa tombol update terpisah), dengan aksi `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
-- Akses `Bulk Operator`, `Viewer`, `Pengaturan`, dan aksi `Logout` digabung dalam satu group menu di header popup tanpa menampilkan info sesi tambahan.
+- Group menu di header popup sekarang hanya berisi `Bulk Operator`, `Viewer`, dan `Pengaturan`; aksi `Logout` dipicu langsung dari tombol inisial user.
 - Aksi `Ambil Data` dan `Kirim Data` di popup dihapus; proses fetch payload untuk viewer dipindahkan ke auto-fetch pada halaman Viewer saat payload masih kosong.
 - Flow AWB berjalan di content context marketplace (Shopee/TikTok) dengan fallback `chrome.scripting.executeScript` saat `tabs.sendMessage` gagal.
 - Pengaturan endpoint AWB dan opsi file disimpan di `powermaxxSettings.marketplaces.{shopee|tiktok_shop}.awb`.

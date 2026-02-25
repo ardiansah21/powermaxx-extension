@@ -47,7 +47,7 @@ npm run package
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, `Pengaturan`, dan `Logout`, plus indikator status bridge minimalis (`ACTIVE/INACTIVE`) di bawah `Base URL` yang disimpan di cache.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
