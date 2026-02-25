@@ -47,7 +47,7 @@ npm run package
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, `Pengaturan`, dan `Logout`, plus indikator status bridge minimalis (`ACTIVE/INACTIVE`) di bawah `Base URL`.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, `Pengaturan`, dan `Logout`, plus indikator status bridge minimalis (`ACTIVE/INACTIVE`) di bawah `Base URL` yang disimpan di cache.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -66,7 +66,7 @@ npm run package
 2. Jalankan `npm run dev`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
-5. Pastikan indikator bridge di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
+5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
 6. Di popup klik `Fetch + Send`.
 7. Uji `Fetch + Send + AWB` dan `Download AWB`.
 8. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.

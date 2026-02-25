@@ -1,6 +1,6 @@
 # Keputusan yang Sudah Dikunci
 
-- [2026-02-26] Status bridge dipantau hanya dari extension popup (tanpa endpoint backend baru), tanpa polling periodik; cek dilakukan saat popup dibuka dan lewat aksi manual `Refresh Status` / `Perbaiki Bridge`.
+- [2026-02-26] Status bridge dipantau hanya dari extension popup (tanpa endpoint backend baru), tanpa polling periodik; status disimpan di storage dan check bridge hanya dijalankan saat user menekan `Refresh Status` / `Perbaiki Bridge` (atau saat Base URL berubah dan user refresh manual).
 - [2026-02-25] Flow verifikasi extension disederhanakan: `npm run verify` hanya menjalankan `check:bridge-regression`, `tsc`, dan `build`; guard `check:single-run-centric` serta simulasi `check:worker-durability` dihapus karena sinyal kualitasnya rendah dan tidak langsung menguji loop worker produksi.
 - [2026-02-25] Modul `src/core/errors/automation-error.ts` dihapus karena tidak dipakai jalur runtime aktif; normalisasi error dipertahankan langsung di pipeline worker/report agar codebase lebih ringkas.
 - [2026-02-22] Target implementasi dikunci ke repo Plasmo `/Users/ardiansah/Coding/Extension Chrome/powermaxx-extension` — menjaga workflow `npm` + `plasmo dev`.

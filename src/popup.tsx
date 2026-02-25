@@ -34,6 +34,15 @@ type BridgeHealthRuntimeResult = {
   reason?: string
 }
 
+type BridgeStatusCachePayload = {
+  baseUrl: string
+  status: "active" | "inactive"
+  reason: string
+  checkedAt: number
+}
+
+const BRIDGE_STATUS_CACHE_KEY = "pmxBridgeStatusCacheV1"
+
 const SPACE = {
   sm: 8,
   md: 12,
@@ -261,7 +270,7 @@ function PopupPage() {
   const [pendingOrderNo, setPendingOrderNo] = useState("")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeUiStatus>("checking")
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeUiStatus>("inactive")
   const [bridgeHint, setBridgeHint] = useState("")
   const [bridgeBusy, setBridgeBusy] = useState(false)
 
@@ -274,17 +283,81 @@ function PopupPage() {
     setStatus("")
   }
 
+  const loadBridgeStatusCache = async (): Promise<BridgeStatusCachePayload | null> => {
+    if (!chrome.storage?.local) {
+      return null
+    }
+
+    return new Promise((resolve) => {
+      chrome.storage.local.get([BRIDGE_STATUS_CACHE_KEY], (result) => {
+        const raw = result?.[BRIDGE_STATUS_CACHE_KEY]
+
+        if (!raw || typeof raw !== "object") {
+          resolve(null)
+          return
+        }
+
+        const payload = raw as Partial<BridgeStatusCachePayload>
+        const status = payload.status === "active" ? "active" : "inactive"
+
+        resolve({
+          baseUrl: normalizeBaseUrl(payload.baseUrl || ""),
+          status,
+          reason: String(payload.reason || ""),
+          checkedAt: Number(payload.checkedAt || 0)
+        })
+      })
+    })
+  }
+
+  const applyBridgeStatusFromCache = async (rawBaseUrl: string) => {
+    const normalizedBaseUrl = normalizeBaseUrl(rawBaseUrl)
+
+    if (!normalizedBaseUrl) {
+      setBridgeStatus("inactive")
+      setBridgeHint("Base URL belum diatur.")
+      return
+    }
+
+    const cached = await loadBridgeStatusCache()
+    if (!cached) {
+      setBridgeStatus("inactive")
+      setBridgeHint("Status bridge belum dicek. Klik Refresh Status.")
+      return
+    }
+
+    if (normalizeBaseUrl(cached.baseUrl) !== normalizedBaseUrl) {
+      setBridgeStatus("inactive")
+      setBridgeHint("Base URL berubah. Klik Refresh Status.")
+      return
+    }
+
+    setBridgeStatus(cached.status === "active" ? "active" : "inactive")
+    setBridgeHint(cached.status === "inactive" ? cached.reason || "Bridge tidak aktif." : "")
+  }
+
   const syncBridgeStatus = async (attemptRepair = false) => {
     try {
       setBridgeBusy(true)
       setBridgeStatus("checking")
       setBridgeHint("")
 
-      const response = await sendRuntimeMessage<BridgeHealthRuntimeResult>({
-        type: attemptRepair
-          ? "POWERMAXX_POPUP_BRIDGE_REPAIR"
-          : "POWERMAXX_POPUP_BRIDGE_STATUS"
-      })
+      const response = (await Promise.race([
+        sendRuntimeMessage<BridgeHealthRuntimeResult>({
+          type: attemptRepair
+            ? "POWERMAXX_POPUP_BRIDGE_REPAIR"
+            : "POWERMAXX_POPUP_BRIDGE_STATUS"
+        }),
+        new Promise<BridgeHealthRuntimeResult>((resolve) => {
+          window.setTimeout(() => {
+            resolve({
+              ok: false,
+              status: "inactive",
+              reason: "Bridge check timeout. Coba klik lagi."
+            })
+          }, 3500)
+        })
+      ])) as BridgeHealthRuntimeResult
 
       if (response?.status === "active") {
         setBridgeStatus("active")
@@ -351,8 +424,8 @@ function PopupPage() {
 
   useEffect(() => {
     void (async () => {
-      await syncSession()
-      await syncBridgeStatus()
+      const session = await syncSession()
+      await applyBridgeStatusFromCache(session.baseUrl)
       clearStatusMessage()
     })()
   }, [])
@@ -426,6 +499,7 @@ function PopupPage() {
       setShowPassword(false)
       setShowToolsMenu(false)
       const session = await syncSession()
+      await applyBridgeStatusFromCache(session.baseUrl)
       setStatusMessage(
         `Login berhasil: ${session.email || normalizedEmail}`,
         "success"
@@ -457,7 +531,8 @@ function PopupPage() {
       setPassword("")
       setShowPassword(false)
       setShowToolsMenu(false)
-      await syncSession()
+      const session = await syncSession()
+      await applyBridgeStatusFromCache(session.baseUrl)
       setStatusMessage("Logout berhasil.", "success")
     } catch (error) {
       setStatusMessage(

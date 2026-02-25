@@ -53,6 +53,32 @@ const syncBridgeFromSettings = async () => {
   await ensureBridgeForBaseUrls(urls)
 }
 
+const BRIDGE_STATUS_CACHE_KEY = "pmxBridgeStatusCacheV1"
+
+type BridgeStatusCachePayload = {
+  baseUrl: string
+  status: "active" | "inactive"
+  reason: string
+  checkedAt: number
+}
+
+const saveBridgeStatusCache = async (
+  payload: BridgeStatusCachePayload
+): Promise<void> => {
+  if (!chrome.storage?.local) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.set(
+      {
+        [BRIDGE_STATUS_CACHE_KEY]: payload
+      },
+      () => resolve()
+    )
+  })
+}
+
 const buildTabUrlPattern = (baseUrl: string) => {
   try {
     const origin = new URL(baseUrl).origin
@@ -91,22 +117,33 @@ const resolvePopupBridgeStatus = async (
   const settings = await loadSettings()
   const baseUrl = normalizeBaseUrl(settings.auth.baseUrl || "")
 
+  const finalize = async (response: RuntimeBridgeHealthResponse) => {
+    await saveBridgeStatusCache({
+      baseUrl,
+      status: response.status,
+      reason: String(response.reason || ""),
+      checkedAt: Date.now()
+    })
+
+    return response
+  }
+
   if (!baseUrl) {
-    return {
+    return finalize({
       ok: true,
       status: "inactive",
       reason: "Base URL belum diatur."
-    }
+    })
   }
 
   if (attemptRepair) {
     const matches = await ensureBridgeForBaseUrls([baseUrl])
     if (!matches.length) {
-      return {
+      return finalize({
         ok: true,
         status: "inactive",
         reason: "Host permission belum aktif untuk Base URL ini."
-      }
+      })
     }
   }
 
@@ -114,36 +151,36 @@ const resolvePopupBridgeStatus = async (
   const tabId = tab?.id
 
   if (typeof tabId !== "number") {
-    return {
+    return finalize({
       ok: true,
       status: "inactive",
       reason: "Tab Powermaxx belum terbuka."
-    }
+    })
   }
 
   try {
     await injectBridgeScriptToTab(tabId)
   } catch (_error) {
-    return {
+    return finalize({
       ok: true,
       status: "inactive",
       tabId,
       url: String(tab?.url || ""),
       reason: "Gagal inject bridge ke tab Powermaxx."
-    }
+    })
   }
 
   const ready = await probeBridgeReady(tabId)
   if (ready) {
-    return {
+    return finalize({
       ok: true,
       status: "active",
       tabId,
       url: String(tab?.url || "")
-    }
+    })
   }
 
-  return {
+  return finalize({
     ok: true,
     status: "inactive",
     tabId,
@@ -151,7 +188,7 @@ const resolvePopupBridgeStatus = async (
     reason: attemptRepair
       ? "Bridge masih belum aktif. Buka tab Powermaxx lalu klik Perbaiki Bridge lagi."
       : "Bridge belum aktif di tab Powermaxx."
-  }
+  })
 }
 
 const resumeWorkersFromStorage = async () => {
