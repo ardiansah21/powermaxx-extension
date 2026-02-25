@@ -25,6 +25,8 @@ const SESSION_STORAGE_KEY = "powermaxx_batch_worker_sessions_v1"
 const REPORTED_STORAGE_KEY = "powermaxx_batch_worker_reported_jobs_v1"
 const EXTENSION_VERSION = chrome.runtime.getManifest().version || ""
 const ACTIVE_SESSION_STALE_MS = 45000
+const MAX_MARKETPLACE_TRANSIENT_RETRY = 2
+const TIKTOK_RETRYABLE_ORDER_CODES = new Set([21001001])
 
 type BatchWorkerStopReason =
   | "batch_terminal"
@@ -243,6 +245,94 @@ const logWorker = (
 const errorMessage = (error: unknown, fallback: string) => {
   const raw = String((error as Error)?.message || error || "").trim()
   return raw || fallback
+}
+
+const resolveOrderMeta = (
+  fetchResult: Awaited<ReturnType<typeof executeFetchOnlyByOrder>> | null
+) => {
+  const empty = { appCode: null as number | null, appMessage: "" }
+
+  const fetchMeta =
+    fetchResult &&
+    fetchResult.fetchResult &&
+    fetchResult.fetchResult.fetchMeta &&
+    typeof fetchResult.fetchResult.fetchMeta === "object"
+      ? (fetchResult.fetchResult.fetchMeta as Record<string, unknown>)
+      : null
+
+  if (!fetchMeta) {
+    return empty
+  }
+
+  const orderMeta =
+    fetchMeta.order && typeof fetchMeta.order === "object"
+      ? (fetchMeta.order as Record<string, unknown>)
+      : null
+
+  if (!orderMeta) {
+    return empty
+  }
+
+  const appCodeRaw = Number(orderMeta.appCode)
+  const appCode =
+    Number.isFinite(appCodeRaw) && appCodeRaw > 0 ? Math.trunc(appCodeRaw) : null
+  const appMessage = String(orderMeta.appMessage || "").trim()
+
+  return { appCode, appMessage }
+}
+
+const shouldRetryTransientMarketplaceError = (
+  claim: BatchJobClaim,
+  fetchResult: Awaited<ReturnType<typeof executeFetchOnlyByOrder>> | null,
+  technicalError: string | null
+) => {
+  if (technicalError || claim.marketplace !== "tiktok_shop" || fetchResult?.ok) {
+    return { shouldRetry: false, appCode: null as number | null, reason: "" }
+  }
+
+  const orderMeta = resolveOrderMeta(fetchResult)
+  const appCode = orderMeta.appCode
+
+  if (appCode && TIKTOK_RETRYABLE_ORDER_CODES.has(appCode)) {
+    return {
+      shouldRetry: true,
+      appCode,
+      reason: orderMeta.appMessage || "System error, please retry"
+    }
+  }
+
+  const message = String(fetchResult?.error || "").toLowerCase()
+  if (message.includes("system error") && message.includes("retry")) {
+    return {
+      shouldRetry: true,
+      appCode,
+      reason: fetchResult?.error || "System error, please retry"
+    }
+  }
+
+  return { shouldRetry: false, appCode, reason: "" }
+}
+
+const buildFetchFailureMessage = (
+  fetchResult: Awaited<ReturnType<typeof executeFetchOnlyByOrder>> | null,
+  technicalError: string | null
+) => {
+  if (technicalError) {
+    return technicalError
+  }
+
+  const explicit = String(fetchResult?.error || "").trim()
+  if (explicit && explicit !== "Fetch marketplace gagal.") {
+    return explicit
+  }
+
+  const orderMeta = resolveOrderMeta(fetchResult)
+  if (orderMeta.appCode) {
+    const suffix = orderMeta.appMessage ? `: ${orderMeta.appMessage}` : ""
+    return `Marketplace order API error (code ${orderMeta.appCode})${suffix}`
+  }
+
+  return explicit || "Fetch marketplace gagal."
 }
 
 const isActiveSessionStale = (session: BatchWorkerSession) => {
@@ -542,29 +632,69 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
   let fetchResult: Awaited<ReturnType<typeof executeFetchOnlyByOrder>> | null =
     null
   let technicalError: string | null = null
+  let transientFetchRetryAttempt = 0
+  let lastTransientAppCode: number | null = null
 
-  try {
-    fetchResult = await executeFetchOnlyByOrder({
-      order: {
-        id: claim.identifier,
-        marketplace: claim.marketplace,
-        idType: orderIdType
-      },
-      actionMode,
-      settings: session.settings
-    })
-  } catch (error) {
-    technicalError = errorMessage(
-      error,
-      "Fetch marketplace gagal karena error internal extension."
+  while (true) {
+    try {
+      fetchResult = await executeFetchOnlyByOrder({
+        order: {
+          id: claim.identifier,
+          marketplace: claim.marketplace,
+          idType: orderIdType
+        },
+        actionMode,
+        settings: session.settings
+      })
+      technicalError = null
+    } catch (error) {
+      technicalError = errorMessage(
+        error,
+        "Fetch marketplace gagal karena error internal extension."
+      )
+
+      logWorker("error", "worker.job.fetch_exception", session, {
+        job_id: claim.id,
+        attempt_no: claim.attemptNo,
+        error: technicalError
+      })
+    }
+
+    const transientRetry = shouldRetryTransientMarketplaceError(
+      claim,
+      fetchResult,
+      technicalError
     )
 
-    logWorker("error", "worker.job.fetch_exception", session, {
+    if (
+      !transientRetry.shouldRetry ||
+      transientFetchRetryAttempt >= MAX_MARKETPLACE_TRANSIENT_RETRY
+    ) {
+      break
+    }
+
+    transientFetchRetryAttempt += 1
+    lastTransientAppCode = transientRetry.appCode
+
+    const retryDelayMs = computeRetryBackoffMs(transientFetchRetryAttempt, Math.random, {
+      baseMs: 1500,
+      maxMs: 10000
+    })
+
+    logWorker("warn", "worker.poll.retry", session, {
+      reason: "marketplace_order_transient",
       job_id: claim.id,
       attempt_no: claim.attemptNo,
-      error: technicalError
+      app_code: transientRetry.appCode,
+      app_message: transientRetry.reason,
+      retry_attempt: transientFetchRetryAttempt,
+      delay_ms: retryDelayMs
     })
+
+    await sleep(retryDelayMs)
   }
+
+  const failureMessage = buildFetchFailureMessage(fetchResult, technicalError)
 
   const payload: Record<string, unknown> = {
     worker_id: session.workerId,
@@ -575,7 +705,7 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
     error_code: fetchResult?.ok ? null : "fetch_failed",
     error_message: fetchResult?.ok
       ? null
-      : technicalError || String(fetchResult?.error || "Fetch marketplace gagal."),
+      : failureMessage,
     technical_error: technicalError,
     result: {
       marketplace: claim.marketplace,
@@ -589,7 +719,9 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
     },
     meta: {
       duration_ms: Date.now() - startedAt,
-      action_mode: actionMode
+      action_mode: actionMode,
+      transient_fetch_retry_attempt: transientFetchRetryAttempt,
+      transient_fetch_last_app_code: lastTransientAppCode
     }
   }
 
