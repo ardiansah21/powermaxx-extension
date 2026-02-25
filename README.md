@@ -69,7 +69,7 @@ npm run package
 5. Di popup klik `Fetch + Send`.
 6. Uji `Fetch + Send + AWB` dan `Download AWB`.
 7. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
-8. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `run_started` sampai `run_finished` muncul.
+8. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
 9. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
 10. Verifikasi response status dan event bridge untuk mode web integration.
 11. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
@@ -83,17 +83,13 @@ npm run package
 
 1. Jalankan static guard kontrak bridge:
    - `npm run check:bridge-regression`
-2. Jalankan guard strict run-centric untuk mode single:
-   - `npm run check:single-run-centric`
-3. Jalankan simulasi hardening worker loop:
-   - `npm run check:worker-durability`
-4. Lanjutkan dengan build check:
+2. Lanjutkan dengan build check:
    - `npx tsc --noEmit`
    - `npm run build`
-5. Lihat checklist browser E2E di:
+3. Lihat checklist browser E2E di:
    - `docs/bridge-regression-checklist.md`
    - `docs/legacy-parity-cutover-checklist.md`
-6. Jalankan verifikasi agregat sekali perintah:
+4. Jalankan verifikasi agregat sekali perintah:
    - `npm run verify`
 
 ## Worker Loop Durability
@@ -101,7 +97,7 @@ npm run package
 - Worker mode tidak berhenti hanya karena `claim-next` kosong selama run belum terminal.
 - Empty claim diperlakukan sebagai idle state dan dipoll ulang dengan backoff 2-5 detik (capped).
 - Error transient polling (`429`, `5xx`, timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
-- Context run aktif disimpan di `chrome.storage.local` (`run_id`, `worker_id`, `last_claim_at`, `last_poll_at`, `last_error`, `stop_reason`) agar service worker bisa auto-resume saat startup/reload.
+- Context batch aktif disimpan di `chrome.storage.local` (`batch_id`, `worker_id`, `last_poll`, `last_error`, `stop_reason`) agar service worker bisa auto-resume saat startup/reload.
 
 ## Troubleshooting
 

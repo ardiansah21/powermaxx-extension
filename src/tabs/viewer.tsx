@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
+import { getMarketplaceLabel } from "~src/core/marketplace"
 import { sendRuntimeMessage } from "~src/core/messaging/runtime-client"
 import {
   clearViewerPayload,
@@ -133,12 +134,6 @@ const toPrettyJson = (value: unknown) => {
   } catch (_error) {
     return String(value)
   }
-}
-
-const getMarketplaceLabel = (value: string) => {
-  if (value === "shopee") return "Shopee"
-  if (value === "tiktok_shop") return "TikTok Shop"
-  return "-"
 }
 
 function ViewerTabPage() {

@@ -42,14 +42,6 @@ const checks = [
       "request",
       "result"
     ]
-  },
-  {
-    file: "src/core/errors/automation-error.ts",
-    required: [
-      "classifyAutomationErrorCode",
-      "buildAutomationActionHint",
-      "toAutomationStatus"
-    ]
   }
 ]
 

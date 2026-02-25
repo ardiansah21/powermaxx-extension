@@ -1,5 +1,7 @@
 # Keputusan yang Sudah Dikunci
 
+- [2026-02-25] Flow verifikasi extension disederhanakan: `npm run verify` hanya menjalankan `check:bridge-regression`, `tsc`, dan `build`; guard `check:single-run-centric` serta simulasi `check:worker-durability` dihapus karena sinyal kualitasnya rendah dan tidak langsung menguji loop worker produksi.
+- [2026-02-25] Modul `src/core/errors/automation-error.ts` dihapus karena tidak dipakai jalur runtime aktif; normalisasi error dipertahankan langsung di pipeline worker/report agar codebase lebih ringkas.
 - [2026-02-22] Target implementasi dikunci ke repo Plasmo `/Users/ardiansah/Coding/Extension Chrome/powermaxx-extension` — menjaga workflow `npm` + `plasmo dev`.
 - [2026-02-22] Nama produk extension: `Powermaxx` — menyelaraskan branding platform general automation + scraping.
 - [2026-02-22] Pilot migration: `Popup Fetch+Send` dengan cakupan Shopee + TikTok dan send ke endpoint real.
@@ -12,7 +14,7 @@
 - [2026-02-23] Bulk headless diberi overlap guard per sumber trigger (`tab-{id}` / `global`) agar run ganda dari sumber yang sama tidak berjalan paralel.
 - [2026-02-23] Bridge coexistence guard aktif: saat extension legacy masih merespons event `powermaxx`, bridge Plasmo menahan eksekusi lokal agar mengurangi risiko proses ganda pada browser yang memasang extension lama + baru bersamaan.
 - [2026-02-23] Bridge injector menandai instance aktif per-tab (`data-powermaxx-bridge-instance`) agar listener lama setelah reload extension tidak ikut memproses request/response baru.
-- [2026-02-23] Error taxonomy untuk mode `single`/`bulk`/`worker` diseragamkan lewat modul shared `src/core/errors/automation-error.ts` agar status, kode error, dan action hint konsisten.
+- [2026-02-23] (Superseded) Error taxonomy untuk mode `single`/`bulk`/`worker` diseragamkan lewat modul shared `src/core/errors/automation-error.ts` agar status, kode error, dan action hint konsisten.
 - [2026-02-22] Parity AWB dimulai di extension baru: popup mendukung `Fetch + Send + AWB` serta `Download AWB`, dan konfigurasi endpoint AWB Shopee/TikTok dipusatkan di `options.tsx` + `powermaxxSettings`.
 - [2026-02-22] Ditambahkan tab `Bulk Operator` dan `Viewer` sebagai UI internal extension baru agar eksekusi batch + inspeksi payload tidak lagi bergantung pada halaman legacy.
 - [2026-02-22] Bulk headless memakai fallback auto-marketplace berbasis default settings (`shopee` -> `tiktok_shop` atau sebaliknya) untuk order yang dikirim tanpa marketplace eksplisit.

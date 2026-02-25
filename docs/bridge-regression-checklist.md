@@ -20,7 +20,7 @@ window.postMessage(
     source: "powermaxx",
     action: "update_order",
     mode: "single",
-    run_id: "regression-single-1",
+    batch_id: "regression-single-1",
     orders: [{ id: "ORDER-1", marketplace: "shopee", id_type: "order_sn" }]
   },
   "*"
@@ -29,8 +29,8 @@ window.postMessage(
 
 4. Verify response/event envelope:
    - `source: "powermaxx_extension"`
-   - `mode`, `run_id`, `worker_id`
-   - worker event names: `run_started`, `run_order_started`, `run_order_heartbeat`, `run_order_finished`, `run_finished`, `run_failed`
+   - `mode`, `batch_id`, `worker_id`
+   - worker event names: `batch.started`, `batch.job.start`, `batch.job.finish`, `batch.finished`
 5. Verify error taxonomy fields on failure paths:
    - `error_code`
    - `error_message`

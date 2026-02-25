@@ -31,7 +31,7 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 | Worker mode          | claim/heartbeat/report/complete      | claim/heartbeat/report/complete + dedupe report                                                | Done                          |
 | Bridge web contract  | `powermaxx` -> `powermaxx_extension` | Kontrak kompatibel + coexistence guard                                                         | Done                          |
 | Host permission flow | optional host request                | optional host request + bridge register                                                        | Done                          |
-| Error taxonomy       | campuran                             | diseragamkan (`automation-error`)                                                              | Done                          |
+| Error taxonomy       | campuran                             | diseragamkan di jalur worker/report (status + pesan error konsisten)                           | Done                          |
 
 ## Perbedaan yang Disengaja (Bukan Bug)
 
@@ -45,7 +45,7 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
 1. `npm run verify` pass.
 2. Popup flow pass (`Login`, `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB`).
 3. Viewer menampilkan payload terbaru setelah `Fetch + Send`, atau auto-fetch saat payload kosong.
-4. Bulk Operator menampilkan progress event (`run_started` -> `run_finished`).
+4. Bulk Operator menampilkan progress event (`batch.started` -> `batch.finished`).
 5. Bridge mode pass untuk `single`, `bulk`, `worker` dengan envelope legacy.
 6. Backend menerima payload extension lama + baru (kompatibilitas API sudah diverifikasi tim backend).
 
@@ -62,7 +62,7 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
    - Popup flow pass di seller aktif: `Fetch + Send`, `Fetch + Send + AWB`, `Download AWB` (Shopee + TikTok Shop).
    - Viewer auto-fetch saat payload kosong pass.
 2. Bridge mode:
-   - `single`: pass (`run_id` `10111294-920a-4b05-aa15-5a83e0f9922f`, `5e6a3990-755e-46b6-92e2-e97dc83c7eea`, `9eb731c2-a971-49a7-bf83-49934c5893cb`), status backend `completed 1/1`.
+   - `single`: pass (`batch_id` `10111294-920a-4b05-aa15-5a83e0f9922f`, `5e6a3990-755e-46b6-92e2-e97dc83c7eea`, `9eb731c2-a971-49a7-bf83-49934c5893cb`), status backend `completed 1/1`.
    - `bulk`/`worker`: blocker awal sudah di-hardening backend (stale recovery, UUID route binding, reconcile scheduler) berdasarkan commit backend:
      - `fc9cb7c3300014600511af8cc4b4a0f41529fe16`
      - `69023b010b7d92ef01a0cb41a9ae606c7c315b4d`
@@ -75,5 +75,5 @@ Dokumen ini dipakai untuk memastikan extension baru (`Powermaxx`, Plasmo MV3) bi
    - Setelah `Logout`, request popup ditolak dengan error terstruktur.
    - Setelah login ulang email/password, flow kembali sukses.
 4. Gate terakhir sebelum cutover hosting:
-   - Jalankan ulang UAT bulk mixed marketplace (>10 order, juga skenario 1 order) di local dan pastikan `run_finished` konsisten.
+   - Jalankan ulang UAT bulk mixed marketplace (>10 order, juga skenario 1 order) di local dan pastikan `batch.finished` konsisten.
    - Verifikasi halaman `/admin/mp-update-runs` bergerak terminal otomatis tanpa reconcile manual.
