@@ -12,7 +12,7 @@ import {
   toActionMode
 } from "~src/core/messages/guards"
 import type { PowermaxxSettings } from "~src/core/settings/schema"
-import { executeFetchOnlyOnActiveMarketplaceTab } from "~src/features/fetch-send/background/run-fetch-send"
+import { executeFetchOnlyByOrder } from "~src/features/fetch-send/background/run-fetch-send"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import {
   computeIdleBackoffMs,
@@ -24,6 +24,7 @@ import {
 const SESSION_STORAGE_KEY = "powermaxx_batch_worker_sessions_v1"
 const REPORTED_STORAGE_KEY = "powermaxx_batch_worker_reported_jobs_v1"
 const EXTENSION_VERSION = chrome.runtime.getManifest().version || ""
+const ACTIVE_SESSION_STALE_MS = 45000
 
 type BatchWorkerStopReason =
   | "batch_terminal"
@@ -239,6 +240,23 @@ const logWorker = (
   logger.info(step, payload)
 }
 
+const errorMessage = (error: unknown, fallback: string) => {
+  const raw = String((error as Error)?.message || error || "").trim()
+  return raw || fallback
+}
+
+const isActiveSessionStale = (session: BatchWorkerSession) => {
+  if (session.stopRequested || session.stopReason) {
+    return true
+  }
+
+  if (!session.lastPoll) {
+    return false
+  }
+
+  return Date.now() - session.lastPoll > ACTIVE_SESSION_STALE_MS
+}
+
 const parseJobClaim = (data: Record<string, unknown> | null): BatchJobClaim | null => {
   const rawJob = data?.job
   if (!rawJob || typeof rawJob !== "object" || Array.isArray(rawJob)) {
@@ -384,7 +402,7 @@ const submitJobResult = async (
   claim: BatchJobClaim,
   payload: Record<string, unknown>
 ) => {
-  const dedupeKey = `${session.batchId}:${claim.id}:${String(payload.status || "")}`
+  const dedupeKey = `${session.batchId}:${claim.id}:${claim.attemptNo}:${String(payload.status || "")}`
 
   if (session.reportedJobKeys.has(dedupeKey)) {
     return {
@@ -520,31 +538,54 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
   })
 
   const actionMode = toActionMode(claim.action)
-  const fetchResult = await executeFetchOnlyOnActiveMarketplaceTab(
-    actionMode,
-    session.settings
-  )
+  const orderIdType = claim.identifierType === "mp_order_sn" ? "order_sn" : "order_id"
+  let fetchResult: Awaited<ReturnType<typeof executeFetchOnlyByOrder>> | null =
+    null
+  let technicalError: string | null = null
+
+  try {
+    fetchResult = await executeFetchOnlyByOrder({
+      order: {
+        id: claim.identifier,
+        marketplace: claim.marketplace,
+        idType: orderIdType
+      },
+      actionMode,
+      settings: session.settings
+    })
+  } catch (error) {
+    technicalError = errorMessage(
+      error,
+      "Fetch marketplace gagal karena error internal extension."
+    )
+
+    logWorker("error", "worker.job.fetch_exception", session, {
+      job_id: claim.id,
+      attempt_no: claim.attemptNo,
+      error: technicalError
+    })
+  }
 
   const payload: Record<string, unknown> = {
     worker_id: session.workerId,
     workerId: session.workerId,
     job_id: claim.id,
     jobId: claim.id,
-    status: fetchResult.ok ? "success" : "failed",
-    error_code: fetchResult.ok ? null : "fetch_failed",
-    error_message: fetchResult.ok
+    status: fetchResult?.ok ? "success" : "failed",
+    error_code: fetchResult?.ok ? null : "fetch_failed",
+    error_message: fetchResult?.ok
       ? null
-      : String(fetchResult.error || "Fetch marketplace gagal."),
-    technical_error: null,
+      : technicalError || String(fetchResult?.error || "Fetch marketplace gagal."),
+    technical_error: technicalError,
     result: {
       marketplace: claim.marketplace,
       identifier: claim.identifier,
       identifier_type: claim.identifierType,
-      order_raw_json: fetchResult.fetchResult?.orderRawJson || null,
-      income_raw_json: fetchResult.fetchResult?.incomeRawJson || null,
-      income_detail_raw_json: fetchResult.fetchResult?.incomeDetailRawJson || null,
-      fetch_meta: fetchResult.fetchResult?.fetchMeta || {},
-      open_url: fetchResult.openUrl || null
+      order_raw_json: fetchResult?.fetchResult?.orderRawJson || null,
+      income_raw_json: fetchResult?.fetchResult?.incomeRawJson || null,
+      income_detail_raw_json: fetchResult?.fetchResult?.incomeDetailRawJson || null,
+      fetch_meta: fetchResult?.fetchResult?.fetchMeta || {},
+      open_url: fetchResult?.openUrl || null
     },
     meta: {
       duration_ms: Date.now() - startedAt,
@@ -559,7 +600,12 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
     session.stopReason = resultResponse.stopReason || "unrecoverable_error"
     session.lastError = resultResponse.message || "Result endpoint fatal error."
   } else if (!resultResponse.ok) {
-    session.lastError = resultResponse.message || "Result endpoint failed."
+    session.lastError =
+      resultResponse.message || String(payload.error_message || "Result endpoint failed.")
+  } else if (payload.status !== "success") {
+    session.lastError = String(payload.error_message || "Fetch marketplace gagal.")
+  } else {
+    session.lastError = null
   }
 
   await sendBridgeWorkerEvent(session.sourceTabId, "batch.job.finish", {
@@ -630,97 +676,118 @@ const runBatchWorkerLoop = async (session: BatchWorkerSession) => {
 
   let emptyAttempt = 0
   let retryAttempt = 0
-
-  while (!session.stopRequested) {
-    session.lastPoll = Date.now()
-    await upsertPersistedSession(session)
-
-    const signal = await requestNextJob(session, emptyAttempt + 1)
-
-    if (signal.type === "claimed") {
-      emptyAttempt = 0
-      retryAttempt = 0
-      session.lastError = null
-
-      await processJob(session, signal.claim)
+  try {
+    while (!session.stopRequested) {
+      session.lastPoll = Date.now()
       await upsertPersistedSession(session)
-      continue
-    }
 
-    if (signal.type === "empty") {
-      retryAttempt = 0
+      const signal = await requestNextJob(session, emptyAttempt + 1)
 
-      if (signal.terminal) {
-        session.stopReason = signal.stopReason || "batch_terminal"
-        break
+      if (signal.type === "claimed") {
+        emptyAttempt = 0
+        retryAttempt = 0
+        session.lastError = null
+
+        await processJob(session, signal.claim)
+        await upsertPersistedSession(session)
+        continue
       }
 
-      emptyAttempt += 1
-      const controlDelay = Number(signal.delayMs)
-      const delayMs =
-        Number.isFinite(controlDelay) && controlDelay >= 0
-          ? Math.trunc(controlDelay)
-          : computeIdleBackoffMs(emptyAttempt, { minMs: 1000, maxMs: 5000 })
+      if (signal.type === "empty") {
+        retryAttempt = 0
 
-      logWorker("info", "worker.claim.empty", session, {
-        empty_attempt: emptyAttempt,
-        delay_ms: delayMs
-      })
+        if (signal.terminal) {
+          session.stopReason = signal.stopReason || "batch_terminal"
+          break
+        }
 
-      await sleep(delayMs)
-      continue
-    }
+        emptyAttempt += 1
+        const controlDelay = Number(signal.delayMs)
+        const delayMs =
+          Number.isFinite(controlDelay) && controlDelay >= 0
+            ? Math.trunc(controlDelay)
+            : computeIdleBackoffMs(emptyAttempt, { minMs: 1000, maxMs: 5000 })
 
-    if (signal.type === "retryable_error") {
-      retryAttempt += 1
-      const computedDelay = computeRetryBackoffMs(retryAttempt, Math.random)
-      const controlDelay = Number(signal.retryDelayMs)
-      const delayMs =
-        Number.isFinite(controlDelay) && controlDelay > 0
-          ? Math.max(Math.trunc(controlDelay), computedDelay)
-          : computedDelay
+        logWorker("info", "worker.claim.empty", session, {
+          empty_attempt: emptyAttempt,
+          delay_ms: delayMs
+        })
 
+        await sleep(delayMs)
+        continue
+      }
+
+      if (signal.type === "retryable_error") {
+        retryAttempt += 1
+        const computedDelay = computeRetryBackoffMs(retryAttempt, Math.random)
+        const controlDelay = Number(signal.retryDelayMs)
+        const delayMs =
+          Number.isFinite(controlDelay) && controlDelay > 0
+            ? Math.max(Math.trunc(controlDelay), computedDelay)
+            : computedDelay
+
+        session.lastError = signal.message
+
+        logWorker("warn", "worker.poll.retry", session, {
+          retry_attempt: retryAttempt,
+          delay_ms: delayMs,
+          status: signal.status,
+          error: signal.message
+        })
+
+        await sleep(delayMs)
+        continue
+      }
+
+      session.stopReason = signal.stopReason
       session.lastError = signal.message
-
-      logWorker("warn", "worker.poll.retry", session, {
-        retry_attempt: retryAttempt,
-        delay_ms: delayMs,
-        status: signal.status,
-        error: signal.message
-      })
-
-      await sleep(delayMs)
-      continue
+      break
     }
 
-    session.stopReason = signal.stopReason
-    session.lastError = signal.message
-    break
-  }
+    if (!session.stopReason) {
+      session.stopReason = session.stopRequested ? "user_stop" : "batch_terminal"
+    }
+  } catch (error) {
+    session.stopRequested = true
+    session.stopReason = "unrecoverable_error"
+    session.lastError = errorMessage(error, "Worker loop berhenti karena error tak terduga.")
 
-  if (!session.stopReason) {
-    session.stopReason = session.stopRequested ? "user_stop" : "batch_terminal"
-  }
+    logWorker("error", "worker.loop.crash", session, {
+      error: session.lastError
+    })
+  } finally {
+    try {
+      await upsertPersistedSession(session)
+    } catch (error) {
+      logWorker("error", "worker.session.persist_failed", session, {
+        error: errorMessage(error, "Gagal menyimpan state worker.")
+      })
+    }
 
-  await upsertPersistedSession(session)
+    await sendBridgeWorkerEvent(session.sourceTabId, "batch.finished", {
+      batch_id: session.batchId,
+      worker_id: session.workerId,
+      stop_reason: session.stopReason,
+      last_error: session.lastError
+    })
 
-  await sendBridgeWorkerEvent(session.sourceTabId, "batch.finished", {
-    batch_id: session.batchId,
-    worker_id: session.workerId,
-    stop_reason: session.stopReason,
-    last_error: session.lastError
-  })
+    logWorker("info", "worker.loop.stop", session, {
+      stop_reason: session.stopReason,
+      last_error: session.lastError
+    })
 
-  logWorker("info", "worker.loop.stop", session, {
-    stop_reason: session.stopReason,
-    last_error: session.lastError
-  })
+    activeSessionsByKey.delete(session.key)
+    activeWorkerByBatchId.delete(session.batchId)
 
-  activeSessionsByKey.delete(session.key)
-  activeWorkerByBatchId.delete(session.batchId)
-
-  if (session.stopReason === "batch_terminal" || session.stopReason === "user_stop") {
-    await removePersistedSession(session.key)
+    if (session.stopReason === "batch_terminal" || session.stopReason === "user_stop") {
+      try {
+        await removePersistedSession(session.key)
+      } catch (error) {
+        logWorker("error", "worker.session.remove_failed", session, {
+          error: errorMessage(error, "Gagal membersihkan state worker.")
+        })
+      }
+    }
   }
 }
 
@@ -746,13 +813,52 @@ export const startBatchWorker = async (args: {
     const activeKey = activeWorkerByBatchId.get(session.batchId)
     const activeSession = activeKey ? activeSessionsByKey.get(activeKey) : null
 
-    return {
-      ok: true,
-      mode: session.mode,
-      running: true,
-      count: 0,
-      batchId: session.batchId,
-      workerId: activeSession?.workerId ?? session.workerId
+    if (!activeSession) {
+      activeWorkerByBatchId.delete(session.batchId)
+    } else if (isActiveSessionStale(activeSession)) {
+      const staleMs = activeSession.lastPoll
+        ? Date.now() - activeSession.lastPoll
+        : null
+
+      logWorker("warn", "worker.session.recovered_stale", activeSession, {
+        stale_ms: staleMs
+      })
+
+      activeSession.stopRequested = true
+      activeSession.stopReason = activeSession.stopReason || "unrecoverable_error"
+      activeSession.lastError =
+        activeSession.lastError || "Sesi worker stale dipulihkan otomatis."
+
+      activeSessionsByKey.delete(activeSession.key)
+      activeWorkerByBatchId.delete(activeSession.batchId)
+
+      try {
+        await removePersistedSession(activeSession.key)
+      } catch (error) {
+        logWorker("warn", "worker.session.remove_failed", activeSession, {
+          error: errorMessage(error, "Gagal membersihkan sesi stale.")
+        })
+      }
+    } else {
+      return {
+        ok: true,
+        mode: session.mode,
+        running: true,
+        count: 0,
+        batchId: session.batchId,
+        workerId: activeSession.workerId
+      }
+    }
+
+    if (activeWorkerByBatchId.has(session.batchId)) {
+      return {
+        ok: true,
+        mode: session.mode,
+        running: true,
+        count: 0,
+        batchId: session.batchId,
+        workerId: activeSession?.workerId ?? session.workerId
+      }
     }
   }
 
@@ -760,7 +866,18 @@ export const startBatchWorker = async (args: {
   activeSessionsByKey.set(session.key, session)
   await upsertPersistedSession(session)
 
-  void runBatchWorkerLoop(session)
+  void runBatchWorkerLoop(session).catch((error) => {
+    session.stopRequested = true
+    session.stopReason = session.stopReason || "unrecoverable_error"
+    session.lastError = errorMessage(error, "Worker gagal dijalankan.")
+
+    logWorker("error", "worker.loop.unhandled", session, {
+      error: session.lastError
+    })
+
+    activeSessionsByKey.delete(session.key)
+    activeWorkerByBatchId.delete(session.batchId)
+  })
 
   return {
     ok: true,

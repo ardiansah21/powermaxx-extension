@@ -238,6 +238,11 @@ const installBridgeScript = () => {
     const mode = (normalizeMode(data.mode) || "bulk") as "single" | "bulk"
     const orders = normalizeOrders(data)
     const batchId = normalizeBatchId(data.batch_id || data.batchId)
+    const workerMode = Boolean(
+      data.worker_mode === true ||
+        data.workerMode === true ||
+        batchId
+    )
 
     if (!action) {
       postResponse(
@@ -271,7 +276,7 @@ const installBridgeScript = () => {
       return
     }
 
-    if (mode === "single" && orders.length !== 1) {
+    if (!workerMode && mode === "single" && orders.length !== 1) {
       postResponse(
         {
           ok: false,

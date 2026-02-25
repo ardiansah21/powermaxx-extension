@@ -425,7 +425,7 @@ const normalizeOrderForExecution = async (
   return order
 }
 
-export const executeFetchSendByOrder = async (
+export const executeFetchOnlyByOrder = async (
   input: ExecuteFetchSendOrderInput
 ): Promise<ExecuteFetchSendResult> => {
   const timeoutMs = input.timeoutMs || 120000
@@ -485,60 +485,12 @@ export const executeFetchSendByOrder = async (
       }
     }
 
-    const token = input.settings.auth.token || ""
-    const baseUrl = input.settings.auth.baseUrl || ""
-
-    if (!token) {
-      return {
-        ok: false,
-        error: "Sesi login belum tersedia. Login dulu di popup.",
-        marketplace,
-        actionMode: input.actionMode,
-        fetchResult
-      }
-    }
-
-    if (!baseUrl) {
-      return {
-        ok: false,
-        error: "Base URL belum diatur.",
-        marketplace,
-        actionMode: input.actionMode,
-        fetchResult
-      }
-    }
-
-    const exportPayload = buildExportPayload(marketplace, fetchResult)
-    const exportResult = await sendExport(baseUrl, token, exportPayload)
-
-    if (exportResult.unauthenticated) {
-      await clearAuthSession()
-      return {
-        ok: false,
-        error: "Sesi login tidak valid atau kadaluarsa. Login ulang.",
-        marketplace,
-        actionMode: input.actionMode,
-        fetchResult,
-        exportResult
-      }
-    }
-
-    const orderId = extractPowermaxxOrderId(exportResult.data)
-    const orderNo = extractPowermaxxOrderNo(exportResult.data)
-
     return {
-      ok: exportResult.ok,
-      error: exportResult.ok ? "" : formatExportFailureMessage(exportResult),
+      ok: true,
+      error: "",
       marketplace,
       actionMode: input.actionMode,
-      fetchResult,
-      exportResult,
-      orderId,
-      orderNo,
-      openUrl:
-        orderId && input.settings.auth.baseUrl
-          ? `${input.settings.auth.baseUrl}/admin/orders/${encodeURIComponent(orderId)}`
-          : ""
+      fetchResult
     }
   } catch (error) {
     return {
@@ -555,6 +507,74 @@ export const executeFetchSendByOrder = async (
         // ignore
       }
     }
+  }
+}
+
+export const executeFetchSendByOrder = async (
+  input: ExecuteFetchSendOrderInput
+): Promise<ExecuteFetchSendResult> => {
+  const fetchOnlyResult = await executeFetchOnlyByOrder(input)
+
+  if (!fetchOnlyResult.ok || !fetchOnlyResult.fetchResult) {
+    return fetchOnlyResult
+  }
+
+  const { marketplace, fetchResult } = fetchOnlyResult
+
+  const token = input.settings.auth.token || ""
+  const baseUrl = input.settings.auth.baseUrl || ""
+
+  if (!token) {
+    return {
+      ok: false,
+      error: "Sesi login belum tersedia. Login dulu di popup.",
+      marketplace,
+      actionMode: input.actionMode,
+      fetchResult
+    }
+  }
+
+  if (!baseUrl) {
+    return {
+      ok: false,
+      error: "Base URL belum diatur.",
+      marketplace,
+      actionMode: input.actionMode,
+      fetchResult
+    }
+  }
+
+  const exportPayload = buildExportPayload(marketplace, fetchResult)
+  const exportResult = await sendExport(baseUrl, token, exportPayload)
+
+  if (exportResult.unauthenticated) {
+    await clearAuthSession()
+    return {
+      ok: false,
+      error: "Sesi login tidak valid atau kadaluarsa. Login ulang.",
+      marketplace,
+      actionMode: input.actionMode,
+      fetchResult,
+      exportResult
+    }
+  }
+
+  const orderId = extractPowermaxxOrderId(exportResult.data)
+  const orderNo = extractPowermaxxOrderNo(exportResult.data)
+
+  return {
+    ok: exportResult.ok,
+    error: exportResult.ok ? "" : formatExportFailureMessage(exportResult),
+    marketplace,
+    actionMode: input.actionMode,
+    fetchResult,
+    exportResult,
+    orderId,
+    orderNo,
+    openUrl:
+      orderId && input.settings.auth.baseUrl
+        ? `${input.settings.auth.baseUrl}/admin/orders/${encodeURIComponent(orderId)}`
+        : ""
   }
 }
 
