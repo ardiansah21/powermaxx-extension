@@ -476,6 +476,10 @@ function PopupPage() {
     [email, password]
   )
   const userInitials = useMemo(() => buildUserInitials(email), [email])
+  const userTooltip = useMemo(() => {
+    const activeEmail = String(email || "").trim() || "akun login"
+    return `Login: ${activeEmail}. Klik untuk logout.`
+  }, [email])
 
   const syncSession = async () => {
     const settings = await loadSettings()
@@ -591,6 +595,11 @@ function PopupPage() {
   }
 
   const handleLogout = async () => {
+    const confirmed = window.confirm("Logout dari akun ini?")
+    if (!confirmed) {
+      return
+    }
+
     try {
       setBusyLogin(true)
       setOrderReference()
@@ -850,11 +859,18 @@ function PopupPage() {
                     : bridgeStatus === "inactive"
                       ? "Perbaiki Bridge"
                       : "Refresh Status"
+                }
+                title={
+                  bridgeBusy
+                    ? "Checking bridge status"
+                    : bridgeStatus === "inactive"
+                      ? "Perbaiki Bridge"
+                      : "Refresh Status"
                 }>
                 {bridgeBusy ? (
                   <svg
-                    width="12"
-                    height="12"
+                    width="13"
+                    height="13"
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
@@ -864,59 +880,75 @@ function PopupPage() {
                       cy="12"
                       r="9"
                       stroke="currentColor"
-                      strokeWidth="1.6"
+                      strokeWidth="1.9"
                       strokeDasharray="4 3"
                     />
                   </svg>
                 ) : bridgeStatus === "inactive" ? (
                   <svg
-                    width="12"
-                    height="12"
+                    width="13"
+                    height="13"
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                     aria-hidden="true">
                     <path
-                      d="M4 12H8L10 8L14 16L16 12H20"
+                      d="M17 17L22 12C23.4 10.6 23.4 8.4 22 7C20.6 5.6 18.4 5.6 17 7L13 11"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M7 7L2 12C0.6 13.4 0.6 15.6 2 17C3.4 18.4 5.6 18.4 7 17L11 13"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M3 3L21 21"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   </svg>
                 ) : (
                   <svg
-                    width="12"
-                    height="12"
+                    width="13"
+                    height="13"
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                     aria-hidden="true">
                     <path
-                      d="M20 6V10H16"
+                      d="M21 12A9 9 0 0 0 5.5 5.7L3 8"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
-                      d="M4 18V14H8"
+                      d="M3 3V8H8"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
-                      d="M6.5 10.5C7.3 8.6 9.1 7.2 11.2 7"
+                      d="M3 12A9 9 0 0 0 18.5 18.3L21 16"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
                     <path
-                      d="M17.5 13.5C16.7 15.4 14.9 16.8 12.8 17"
+                      d="M16 21H21V16"
                       stroke="currentColor"
-                      strokeWidth="1.7"
+                      strokeWidth="1.9"
                       strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
                   </svg>
                 )}
@@ -985,7 +1017,8 @@ function PopupPage() {
                 style={userInitialButtonStyle(busyLogin || busyAction)}
                 disabled={busyLogin || busyAction}
                 onClick={handleLogout}
-                aria-label="Logout">
+                aria-label={userTooltip}
+                title={userTooltip}>
                 {userInitials}
               </button>
             )}
