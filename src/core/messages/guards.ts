@@ -1,4 +1,5 @@
 import type {
+  ActionMode,
   BridgeAction,
   BridgeApiPaths,
   BridgeInboundMessage,
@@ -8,8 +9,6 @@ import type {
 } from "~src/core/messages/contracts"
 
 export const ALLOWED_ACTIONS = new Set<BridgeAction>([
-  "update_order",
-  "update_income",
   "update_both"
 ])
 
@@ -182,8 +181,7 @@ export const normalizeWorkerId = (value: unknown, fallbackTabId?: number | null)
 export const normalizeBatchId = (value: unknown) =>
   normalizeBatchIdInternal(value)
 
-export const toActionMode = (action: BridgeAction) => {
-  if (action === "update_income") return "update_income"
-  if (action === "update_order") return "update_order"
+export const toActionMode = (action: BridgeAction): ActionMode => {
+  void action
   return "fetch_send"
 }

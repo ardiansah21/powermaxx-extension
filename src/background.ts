@@ -232,7 +232,7 @@ const fetchProfile = async (baseUrl: string, token: string) => {
 
 const storeViewerFromFetchResult = async (args: {
   marketplace: "shopee" | "tiktok_shop"
-  actionMode: "fetch_send" | "update_order" | "update_income"
+  actionMode: ActionMode
   orderId?: string
   fetchResult?: {
     orderRawJson?: Record<string, unknown> | null

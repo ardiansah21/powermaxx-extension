@@ -639,7 +639,7 @@ function PopupPage() {
       setShowToolsMenu(false)
       setBusyAction(true)
       setOrderReference()
-      setStatusMessage(`Menjalankan ${actionMode}...`, "neutral")
+      setStatusMessage("Menjalankan Update MP...", "neutral")
       const response = await sendRuntimeMessage<RuntimeResult>({
         type: "POWERMAXX_POPUP_FETCH_SEND",
         actionMode

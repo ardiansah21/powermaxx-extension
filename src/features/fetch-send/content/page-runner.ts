@@ -662,57 +662,6 @@ export const runMarketplaceFetchInPage = async (
   }
 
   try {
-    const incomeOnly = request.actionMode === "update_income"
-    const orderOnly = request.actionMode === "update_order"
-
-    if (request.marketplace === "shopee" && orderOnly) {
-      const result = await pageFetcherShopeeOrderOnly()
-      if (result.error) {
-        return {
-          ok: false,
-          error: result.error,
-          orderRawJson: null,
-          incomeRawJson: null,
-          incomeDetailRawJson: null
-        }
-      }
-
-      const orderJson = safeJson(result.order?.body || "")
-      const orderOk = result.order?.ok && (orderJson?.code ?? 0) === 0
-
-      return {
-        ok: Boolean(orderOk),
-        orderRawJson: orderJson,
-        incomeRawJson: null,
-        incomeDetailRawJson: null,
-        fetchMeta: { order: result.order }
-      }
-    }
-
-    if (request.marketplace === "shopee" && incomeOnly) {
-      const result = await pageFetcherShopeeIncomeOnly()
-      if (result.error) {
-        return {
-          ok: false,
-          error: result.error,
-          orderRawJson: null,
-          incomeRawJson: null,
-          incomeDetailRawJson: null
-        }
-      }
-
-      const incomeJson = safeJson(result.income?.body || "")
-      const incomeOk = Boolean(result.income?.ok)
-
-      return {
-        ok: incomeOk,
-        orderRawJson: null,
-        incomeRawJson: incomeJson,
-        incomeDetailRawJson: null,
-        fetchMeta: { income: result.income }
-      }
-    }
-
     if (request.marketplace === "shopee") {
       const result = await pageFetcherShopee()
       if (result.error) {
@@ -739,61 +688,6 @@ export const runMarketplaceFetchInPage = async (
         fetchMeta: {
           order: result.order,
           income: result.income
-        }
-      }
-    }
-
-    if (request.marketplace === "tiktok_shop" && orderOnly) {
-      const result = await pageFetcherTikTokOrderOnly()
-      if (result.error) {
-        return {
-          ok: false,
-          error: result.error,
-          orderRawJson: null,
-          incomeRawJson: null,
-          incomeDetailRawJson: null
-        }
-      }
-
-      const orderJson = safeJson(result.order?.body || "")
-      const orderOk = Boolean(result.order?.ok && (orderJson?.code ?? 0) === 0)
-
-      return {
-        ok: orderOk,
-        orderRawJson: orderJson,
-        incomeRawJson: null,
-        incomeDetailRawJson: null,
-        fetchMeta: { order: result.order }
-      }
-    }
-
-    if (request.marketplace === "tiktok_shop" && incomeOnly) {
-      const result = await pageFetcherTikTokIncomeOnly()
-      if (result.error) {
-        return {
-          ok: false,
-          error: result.error,
-          orderRawJson: null,
-          incomeRawJson: null,
-          incomeDetailRawJson: null
-        }
-      }
-
-      const incomeJson = safeJson(result.income?.body || "")
-      const detailJson = safeJson(result.incomeDetail?.body || "")
-
-      const incomeOk = Boolean(result.income?.ok && (incomeJson?.code ?? 0) === 0)
-      const detailOk = Boolean(result.incomeDetail?.ok && (detailJson?.code ?? 0) === 0)
-      const detailMissing = !detailOk
-
-      return {
-        ok: incomeOk && (detailOk || detailMissing),
-        orderRawJson: null,
-        incomeRawJson: incomeJson,
-        incomeDetailRawJson: detailOk ? detailJson : null,
-        fetchMeta: {
-          income: result.income,
-          incomeDetail: result.incomeDetail
         }
       }
     }

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
-import type {
-  BridgeAction,
-  RuntimeActionResponse
-} from "~src/core/messages/contracts"
+import type { RuntimeActionResponse } from "~src/core/messages/contracts"
 import { sendRuntimeMessage } from "~src/core/messaging/runtime-client"
 
 type StatusTone = "neutral" | "success" | "warning" | "error"
@@ -165,12 +162,6 @@ const logsStyle: React.CSSProperties = {
   lineHeight: 1.35
 }
 
-const mapAction = (value: "fetch_send" | "update_order" | "update_income"): BridgeAction => {
-  if (value === "update_order") return "update_order"
-  if (value === "update_income") return "update_income"
-  return "update_both"
-}
-
 const parseMarketplace = (value: string): BulkOrderInput["marketplace"] => {
   const raw = String(value || "").trim().toLowerCase()
   if (raw === "shopee") return "shopee"
@@ -262,9 +253,6 @@ function BulkTabPage() {
   const [rawInput, setRawInput] = useState("")
   const [marketplace, setMarketplace] = useState<BulkOrderInput["marketplace"]>("auto")
   const [idType, setIdType] = useState<BulkOrderInput["idType"]>("order_sn")
-  const [actionMode, setActionMode] = useState<
-    "fetch_send" | "update_order" | "update_income"
-  >("fetch_send")
   const [status, setStatus] = useState("Siap menjalankan bulk.")
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral")
   const [busy, setBusy] = useState(false)
@@ -409,7 +397,7 @@ function BulkTabPage() {
       const response = await sendRuntimeMessage<RuntimeActionResponse>({
         type: "POWERMAXX_BATCH_WORKER",
         mode: "bulk",
-        action: mapAction(actionMode),
+        action: "update_both",
         batchId: normalizedBatchId,
         batch_id: normalizedBatchId,
         orders
@@ -508,29 +496,6 @@ function BulkTabPage() {
             </select>
           </div>
 
-          <div>
-            <label style={labelStyle} htmlFor="bulk-action">
-              Action
-            </label>
-            <select
-              id="bulk-action"
-              style={inputStyle}
-              value={actionMode}
-              disabled={busy}
-              onChange={(event) =>
-                setActionMode(
-                  event.target.value === "update_order"
-                    ? "update_order"
-                    : event.target.value === "update_income"
-                      ? "update_income"
-                      : "fetch_send"
-                )
-              }>
-              <option value="fetch_send">Update Both</option>
-              <option value="update_order">Update Order</option>
-              <option value="update_income">Update Income</option>
-            </select>
-          </div>
         </div>
 
         <div style={{ marginTop: 12 }}>

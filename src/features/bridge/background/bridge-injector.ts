@@ -15,7 +15,7 @@ const installBridgeScript = () => {
   const BRIDGE_PROBE_ACK_TYPE = "bridge_probe_ack"
   const WORKER_EVENT_TYPE = "worker_event"
 
-  const ALLOWED_ACTIONS = new Set(["update_order", "update_income", "update_both"])
+  const ALLOWED_ACTIONS = new Set(["update_both"])
   const ALLOWED_MODES = new Set(["single", "bulk"])
 
   const EXTENSION_VERSION =

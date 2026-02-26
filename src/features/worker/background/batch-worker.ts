@@ -355,7 +355,7 @@ const parseJobClaim = (data: Record<string, unknown> | null): BatchJobClaim | nu
 
   const job = rawJob as Record<string, unknown>
   const id = Number(job.id || job.job_id || job.jobId)
-  const action = String(job.action || "").trim() as BridgeAction
+  const action: BridgeAction = "update_both"
   const marketplace = String(job.marketplace || "").trim() as "shopee" | "tiktok_shop"
   const identifier = String(job.identifier || "").trim()
   const identifierType = String(job.identifier_type || job.identifierType || "").trim() as
@@ -364,7 +364,6 @@ const parseJobClaim = (data: Record<string, unknown> | null): BatchJobClaim | nu
   const attemptNo = Number(job.attempt_no || job.attemptNo || 0)
 
   if (!Number.isFinite(id) || id <= 0) return null
-  if (!["update_order", "update_income", "update_both"].includes(action)) return null
   if (!["shopee", "tiktok_shop"].includes(marketplace)) return null
   if (!identifier) return null
 

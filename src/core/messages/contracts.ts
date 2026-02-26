@@ -1,10 +1,10 @@
 export type Marketplace = "shopee" | "tiktok_shop" | "auto"
 
-export type BridgeAction = "update_order" | "update_income" | "update_both"
+export type BridgeAction = "update_both"
 
 export type BridgeMode = "single" | "bulk"
 
-export type ActionMode = "fetch_send" | "update_income" | "update_order"
+export type ActionMode = "fetch_send"
 
 export interface NormalizedOrder {
   id: string

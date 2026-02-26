@@ -299,8 +299,8 @@ function ViewerTabPage() {
             </div>
           </div>
           <div style={summaryCardStyle}>
-            <div style={summaryLabelStyle}>Action Mode</div>
-            <div style={summaryValueStyle}>{payload?.actionMode || "-"}</div>
+            <div style={summaryLabelStyle}>Update</div>
+            <div style={summaryValueStyle}>{payload?.actionMode ? "update_mp" : "-"}</div>
           </div>
           <div style={summaryCardStyle}>
             <div style={summaryLabelStyle}>Order ID</div>
