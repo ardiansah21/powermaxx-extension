@@ -70,8 +70,10 @@ export const runMarketplaceFetchInPage = async (
   }
 
   const waitForTikTokReady = async (keywords: string[]) => {
-    const documentReady = await waitForDocumentReady(12000)
-    const perfReady = await waitForPerfEntries(keywords, 14000, 400)
+    const [documentReady, perfReady] = await Promise.all([
+      waitForDocumentReady(8000),
+      waitForPerfEntries(keywords, 8000, 300)
+    ])
 
     if (perfReady) {
       return true
@@ -81,9 +83,9 @@ export const runMarketplaceFetchInPage = async (
       return false
     }
 
-    await sleep(1200)
+    await sleep(600)
 
-    return waitForPerfEntries(keywords, 6000, 400)
+    return waitForPerfEntries(keywords, 3000, 300)
   }
 
   const pickCookie = (name: string) => {
@@ -209,7 +211,7 @@ export const runMarketplaceFetchInPage = async (
       }
 
       if (attempt < 3) {
-        await sleep(600 + attempt * 800)
+        await sleep(250 + attempt * 200)
       }
     }
 
