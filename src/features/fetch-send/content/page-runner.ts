@@ -70,7 +70,20 @@ export const runMarketplaceFetchInPage = async (
   }
 
   const waitForTikTokReady = async (keywords: string[]) => {
-    await Promise.race([waitForPerfEntries(keywords), waitForDocumentReady()])
+    const documentReady = await waitForDocumentReady(12000)
+    const perfReady = await waitForPerfEntries(keywords, 14000, 400)
+
+    if (perfReady) {
+      return true
+    }
+
+    if (!documentReady) {
+      return false
+    }
+
+    await sleep(1200)
+
+    return waitForPerfEntries(keywords, 6000, 400)
   }
 
   const pickCookie = (name: string) => {
@@ -162,6 +175,46 @@ export const runMarketplaceFetchInPage = async (
       }
 
       return resourceName
+    }
+
+    return ""
+  }
+
+  const hasTikTokSignedOrderParams = (urlValue: string) => {
+    if (!urlValue) {
+      return false
+    }
+
+    try {
+      const parsed = new URL(urlValue)
+
+      if (!parsed.pathname.includes("/api/fulfillment/order/get")) {
+        return false
+      }
+
+      return (
+        parsed.searchParams.has("msToken") &&
+        (parsed.searchParams.has("X-Bogus") || parsed.searchParams.has("X-Gnarly"))
+      )
+    } catch (_error) {
+      return false
+    }
+  }
+
+  const resolveTikTokOrderApiUrl = async (fallbackOrderEndpoint: string) => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const perfOrderUrl = pickLatestResourceUrl("/api/fulfillment/order/get")
+      if (perfOrderUrl) {
+        return perfOrderUrl
+      }
+
+      if (attempt < 3) {
+        await sleep(600 + attempt * 800)
+      }
+    }
+
+    if (hasTikTokSignedOrderParams(fallbackOrderEndpoint)) {
+      return fallbackOrderEndpoint
     }
 
     return ""
@@ -329,17 +382,24 @@ export const runMarketplaceFetchInPage = async (
       return { error: "Endpoint TikTok belum lengkap." }
     }
 
-    const perfOrderUrl = pickLatestResourceUrl("/api/fulfillment/order/get")
+    const resolvedOrderUrl = await resolveTikTokOrderApiUrl(orderEndpoint)
+    if (!resolvedOrderUrl) {
+      return {
+        error:
+          "Signed TikTok order request belum siap. Tunggu halaman detail TikTok selesai memuat, lalu coba lagi."
+      }
+    }
+
     const perfStatementUrl = pickLatestResourceUrl(
       "/api/v1/pay/statement/order/list",
       "reference_id",
       orderId
     )
 
-    const orderUrl = new URL(perfOrderUrl || orderEndpoint)
+    const orderUrl = new URL(resolvedOrderUrl)
     const statementUrl = new URL(perfStatementUrl || statementEndpoint)
 
-    if (!perfStatementUrl && perfOrderUrl) {
+    if (!perfStatementUrl) {
       for (const [key, value] of orderUrl.searchParams.entries()) {
         if (!statementUrl.searchParams.has(key)) {
           statementUrl.searchParams.set(key, value)
@@ -502,8 +562,16 @@ export const runMarketplaceFetchInPage = async (
       return { error: "Order ID tidak ditemukan (buka halaman order detail TikTok)" }
     }
 
-    const perfOrderUrl = pickLatestResourceUrl("/api/fulfillment/order/get")
-    const orderUrl = new URL(perfOrderUrl || request.endpoints.orderEndpoint)
+    const orderEndpoint = request.endpoints.orderEndpoint
+    const resolvedOrderUrl = await resolveTikTokOrderApiUrl(orderEndpoint)
+    if (!resolvedOrderUrl) {
+      return {
+        error:
+          "Signed TikTok order request belum siap. Tunggu halaman detail TikTok selesai memuat, lalu coba lagi."
+      }
+    }
+
+    const orderUrl = new URL(resolvedOrderUrl)
 
     const orderResp = await fetch(orderUrl.toString(), {
       method: "POST",

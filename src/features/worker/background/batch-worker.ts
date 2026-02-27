@@ -27,6 +27,10 @@ const EXTENSION_VERSION = chrome.runtime.getManifest().version || ""
 const ACTIVE_SESSION_STALE_MS = 45000
 const MAX_MARKETPLACE_TRANSIENT_RETRY = 2
 const TIKTOK_RETRYABLE_ORDER_CODES = new Set([21001001])
+const TIKTOK_RETRYABLE_ERROR_PATTERNS = [
+  "system error, please retry",
+  "signed tiktok order request belum siap"
+]
 
 type BatchWorkerStopReason =
   | "batch_terminal"
@@ -302,7 +306,9 @@ const shouldRetryTransientMarketplaceError = (
   }
 
   const message = String(fetchResult?.error || "").toLowerCase()
-  if (message.includes("system error") && message.includes("retry")) {
+  if (
+    TIKTOK_RETRYABLE_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
+  ) {
     return {
       shouldRetry: true,
       appCode,
