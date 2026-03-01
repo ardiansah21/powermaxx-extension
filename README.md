@@ -43,6 +43,32 @@ npm run build
 npm run package
 ```
 
+## Release Tim (GitHub)
+
+Artifact yang dibagikan ke tim:
+
+- `build/chrome-mv3-prod.zip`
+
+Format versi sederhana:
+
+- `PATCH` (`v0.1.1 -> v0.1.2`): bugfix kecil, docs, atau hardening tanpa ubah flow utama.
+- `MINOR` (`v0.1.2 -> v0.2.0`): fitur baru yang tetap kompatibel.
+- `MAJOR` (`v0.2.0 -> v1.0.0`): perubahan yang berpotensi breaking (kontrak bridge, flow permission, atau alur operator).
+
+Flow release ringkas:
+
+1. Jalankan quality gate:
+   - `npm run verify`
+2. Bump versi:
+   - `npm version patch` atau `npm version minor` atau `npm version major`
+3. Generate artifact:
+   - `npm run package`
+4. Push branch + tag:
+   - `git push origin main --follow-tags`
+5. Buat GitHub Release dari tag terbaru, lalu upload `build/chrome-mv3-prod.zip`.
+
+Lihat detail operasional di `docs/release-checklist.md`.
+
 ## Arsitektur Ringkas
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
