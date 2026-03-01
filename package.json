@@ -1,7 +1,7 @@
 {
   "name": "powermaxx-extension",
   "displayName": "Powermaxx",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Powermaxx Scraping & Automation Engine",
   "author": "Ardiansah email.ardi21@gmail.com",
   "scripts": {
