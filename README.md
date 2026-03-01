@@ -4,12 +4,12 @@ Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workfl
 
 ## Fitur Utama
 
-- `Update MP`: trigger manual dari popup, dengan alur utama produksi tetap dipicu dari sistem Powermaxx (Laravel) melalui bridge.
+- `Fetch + Send + AWB`: update data sekaligus proses AWB dalam satu aksi dari popup.
 - `Fetch + Send`: ambil data order dari marketplace aktif lalu kirim ke API Powermaxx.
-- `Fetch + Send + AWB`: jalankan update data sekaligus proses AWB dalam satu aksi.
-- `Download AWB`: generate/download AWB dari tab marketplace aktif sesuai konfigurasi endpoint.
+- `Download AWB`: unduh AWB dari halaman seller marketplace aktif.
 - `Viewer`: melihat payload terakhir (ringkasan + JSON mentah) untuk verifikasi cepat.
-- `Bulk Operator`: menjalankan batch worker mode dan memantau progress event.
+- `Bulk Operator`: menjalankan batch worker mode dan memantau progres proses.
+- `Pengaturan`: mengatur Base URL API dan endpoint yang dipakai extension.
 
 ## Referensi Resmi
 
@@ -82,7 +82,7 @@ Lihat detail operasional di `docs/release-checklist.md`.
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` (`Update MP`, `Fetch + Send + AWB`, `Download AWB`), dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` (`Fetch + Send + AWB`, `Fetch + Send`, `Download AWB`), dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -90,11 +90,11 @@ Lihat detail operasional di `docs/release-checklist.md`.
 - `src/features/viewer/shared/storage.ts`: persistence payload viewer di `chrome.storage.local`.
 - `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
 
-## Definisi Update MP
+## Definisi Proses Update
 
-- Sumber perintah utama `Update MP` berasal dari sistem Powermaxx (Laravel) melalui bridge (`powermaxx` -> `powermaxx_extension`).
-- Extension menjalankan pengambilan data dari marketplace di browser, lalu mengirim hasilnya kembali ke API Powermaxx.
-- Tombol `Update MP` di popup adalah trigger manual untuk kebutuhan operator/testing, bukan pengganti alur bridge dari sistem.
+- Sumber perintah utama update berasal dari sistem Powermaxx (Laravel) melalui bridge (`powermaxx` -> `powermaxx_extension`).
+- Di popup, proses manual dijalankan lewat tombol `Fetch + Send` atau `Fetch + Send + AWB`.
+- Extension mengambil data dari marketplace di browser, lalu mengirim hasilnya kembali ke API Powermaxx.
 
 ## Permission Model
 
@@ -108,9 +108,9 @@ Lihat detail operasional di `docs/release-checklist.md`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
-6. Di popup klik `Update MP` untuk trigger manual proses update (uji operator/testing).
-7. Pada alur produksi, proses update dipicu dari sistem Powermaxx (Laravel) dan extension menerima request bridge secara otomatis.
-8. Uji juga `Fetch + Send + AWB` dan `Download AWB` jika diperlukan.
+6. Di popup jalankan proses manual dengan klik `Fetch + Send` atau `Fetch + Send + AWB`.
+7. Uji juga `Download AWB` jika diperlukan.
+8. Pada alur produksi, proses update dipicu dari sistem Powermaxx (Laravel) dan extension menerima request bridge secara otomatis.
 9. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
 10. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
 11. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
