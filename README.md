@@ -93,10 +93,11 @@ Lihat detail operasional di `docs/release-checklist.md`.
 11. Di popup, klik ikon menu tiga garis di kanan atas, lalu pilih `Pengaturan`.
 12. Isi `Base URL API` dengan `https://pmx.arvateams.com`, lalu klik `Simpan`.
 13. Setelah klik `Simpan`, jika muncul pop-up izin akses situs, klik `Izinkan`.
-14. Kembali ke popup, lalu login menggunakan email dan password akun Powermaxx.
+14. Kembali ke popup, lalu klik tombol `Cek Status Bridge`.
 15. Jika status berubah ke `Bridge: INACTIVE`, klik `Perbaiki Bridge`, lalu cek ulang.
 16. Pastikan status menjadi `Bridge: ACTIVE`.
-17. Jika status sudah `Bridge: ACTIVE`, extension siap dipakai. Uji cepat dengan klik `Fetch + Send`.
+17. Login menggunakan email dan password akun Powermaxx.
+18. Jika status sudah `Bridge: ACTIVE` dan login berhasil, extension siap dipakai. Uji cepat dengan klik `Fetch + Send`.
 
 ## Arsitektur Ringkas
 
