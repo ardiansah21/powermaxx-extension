@@ -97,6 +97,56 @@ const findPowermaxxTab = async (baseUrl: string) => {
   return tabs.find((tab) => typeof tab.id === "number") || null
 }
 
+const toOrigin = (value: string) => {
+  try {
+    return new URL(value).origin
+  } catch (_error) {
+    return ""
+  }
+}
+
+const summarizeUrl = (value: string) => {
+  const raw = String(value || "").trim()
+  if (!raw) {
+    return ""
+  }
+
+  return raw.length > 96 ? `${raw.slice(0, 96)}...` : raw
+}
+
+const findOpenPowermaxxAdminTab = async () => {
+  const tabs = await chrome.tabs.query({})
+  const candidates = tabs.filter((tab) => {
+    const url = String(tab.url || tab.pendingUrl || "")
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      return false
+    }
+
+    const lower = url.toLowerCase()
+    if (!lower.includes("/admin")) {
+      return false
+    }
+
+    if (lower.includes("seller.shopee.co.id") || lower.includes("seller-id.tokopedia.com")) {
+      return false
+    }
+
+    return (
+      lower.includes("powermaxx") ||
+      lower.includes("pmx.") ||
+      lower.includes(".test") ||
+      lower.includes("localhost")
+    )
+  })
+
+  if (!candidates.length) {
+    return null
+  }
+
+  const active = candidates.find((tab) => tab.active)
+  return active || candidates[0]
+}
+
 const resolvePopupBridgeStatus = async (
   attemptRepair: boolean
 ): Promise<RuntimeBridgeHealthResponse> => {
@@ -128,7 +178,7 @@ const resolvePopupBridgeStatus = async (
       return finalize({
         ok: true,
         status: "inactive",
-        reason: "Host permission belum aktif untuk Base URL ini."
+        reason: `Host permission belum aktif untuk Base URL ${baseUrl}. Klik ikon bridge lagi untuk grant permission.`
       })
     }
   }
@@ -137,10 +187,23 @@ const resolvePopupBridgeStatus = async (
   const tabId = tab?.id
 
   if (typeof tabId !== "number") {
+    const openAdminTab = await findOpenPowermaxxAdminTab()
+    const expectedOrigin = toOrigin(baseUrl)
+    const openAdminUrl = String(openAdminTab?.url || openAdminTab?.pendingUrl || "")
+    const openAdminOrigin = toOrigin(openAdminUrl)
+
+    if (openAdminUrl && expectedOrigin && openAdminOrigin && openAdminOrigin !== expectedOrigin) {
+      return finalize({
+        ok: true,
+        status: "inactive",
+        reason: `Base URL extension: ${baseUrl}. Tab admin yang terbuka: ${summarizeUrl(openAdminUrl)}. Samakan Base URL dengan environment tab admin lalu Refresh Status.`
+      })
+    }
+
     return finalize({
       ok: true,
       status: "inactive",
-      reason: "Tab Powermaxx belum terbuka."
+      reason: `Tab Powermaxx untuk Base URL ${baseUrl} belum terbuka. Buka ${baseUrl}/admin lalu Refresh Status.`
     })
   }
 
