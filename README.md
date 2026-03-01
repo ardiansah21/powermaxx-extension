@@ -2,6 +2,15 @@
 
 Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), sebagai eksekutor proses update dari sistem Powermaxx (Laravel) melalui bridge.
 
+## Fitur Utama
+
+- `Update MP`: trigger manual dari popup, dengan alur utama produksi tetap dipicu dari sistem Powermaxx (Laravel) melalui bridge.
+- `Fetch + Send`: ambil data order dari marketplace aktif lalu kirim ke API Powermaxx.
+- `Fetch + Send + AWB`: jalankan update data sekaligus proses AWB dalam satu aksi.
+- `Download AWB`: generate/download AWB dari tab marketplace aktif sesuai konfigurasi endpoint.
+- `Viewer`: melihat payload terakhir (ringkasan + JSON mentah) untuk verifikasi cepat.
+- `Bulk Operator`: menjalankan batch worker mode dan memantau progress event.
+
 ## Referensi Resmi
 
 - Chrome Extensions MV3 Service Worker: https://developer.chrome.com/docs/extensions/develop/migrate/to-service-workers
