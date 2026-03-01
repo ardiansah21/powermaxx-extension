@@ -1,6 +1,6 @@
 # Powermaxx
 
-Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), sebagai eksekutor proses update dari sistem Powermaxx (Laravel) melalui bridge.
+Powermaxx adalah extension Chrome untuk membantu tim operasional marketplace mengambil data order dari tab seller (Shopee/TikTok), lalu mengirimkannya ke sistem Powermaxx dengan alur yang lebih cepat dan konsisten.
 
 ## Fitur Utama
 
@@ -56,7 +56,7 @@ npm run package
 
 Artifact yang dibagikan ke tim:
 
-- `build/chrome-mv3-prod.zip`
+- `build/powermaxx-extension-vX.Y.Z.zip` (contoh: `build/powermaxx-extension-v0.1.0.zip`)
 
 Format versi sederhana:
 
@@ -74,9 +74,27 @@ Flow release ringkas:
    - `npm run package`
 4. Push branch + tag:
    - `git push origin main --follow-tags`
-5. Buat GitHub Release dari tag terbaru, lalu upload `build/chrome-mv3-prod.zip`.
+5. Buat GitHub Release dari tag terbaru, lalu upload `build/powermaxx-extension-vX.Y.Z.zip`.
 
 Lihat detail operasional di `docs/release-checklist.md`.
+
+## Instalasi Tim (Tanpa Coding)
+
+1. Buka halaman GitHub Release versi yang akan dipakai tim (contoh: `v0.1.0`).
+2. Download file asset: `powermaxx-extension-vX.Y.Z.zip`.
+3. Buat folder baru di komputer, lalu extract isi ZIP ke folder tersebut sampai terlihat file `manifest.json`.
+4. Buka Chrome ke `chrome://extensions`.
+5. Aktifkan `Developer mode` di pojok kanan atas.
+6. Jika extension lama `Powermaxx Order Scraper` masih terpasang, nonaktifkan atau hapus dulu agar tidak bentrok.
+7. Klik `Load unpacked`, lalu pilih folder hasil extract yang berisi `manifest.json`.
+8. Klik ikon `Extensions` (ikon puzzle) di kanan atas Chrome.
+9. Cari `Powermaxx`, lalu klik ikon pin (`Sematkan`) supaya ikon Powermaxx selalu muncul di toolbar.
+10. Klik ikon `Powermaxx` di toolbar untuk membuka popup extension.
+11. Login menggunakan email dan password akun Powermaxx.
+12. Di popup, klik ikon menu tiga garis di kanan atas, lalu pilih `Pengaturan`.
+13. Isi `Base URL API` dengan `https://pmx.arvateams.com`, lalu klik `Simpan`.
+14. Kembali ke popup, klik `Refresh Status` pada baris status bridge.
+15. Jika status sudah `Bridge: ACTIVE`, extension siap dipakai. Uji cepat dengan klik `Fetch + Send`.
 
 ## Arsitektur Ringkas
 
@@ -139,7 +157,7 @@ Lihat detail operasional di `docs/release-checklist.md`.
 
 - Worker mode tidak berhenti hanya karena `claim-next` kosong selama run belum terminal.
 - Empty claim diperlakukan sebagai idle state dan dipoll ulang dengan backoff 2-5 detik (capped).
-- Error transient polling (server sementara tidak stabil atau timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
+- Gangguan sementara saat polling (server sementara tidak stabil atau timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
 - Context batch aktif disimpan di `chrome.storage.local` (`batch_id`, `worker_id`, `last_poll`, `last_error`, `stop_reason`) agar service worker bisa auto-resume saat startup/reload.
 
 ## Troubleshooting

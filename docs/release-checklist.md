@@ -29,15 +29,16 @@ Menjaga semua anggota tim memakai build extension yang sama melalui GitHub Relea
    - Buka `https://github.com/<org-or-user>/<repo>/releases/new`
    - Pilih tag terbaru.
    - Judul: `Powermaxx vX.Y.Z`.
-   - Upload file `build/chrome-mv3-prod.zip`.
+   - Upload file `build/powermaxx-extension-vX.Y.Z.zip`.
    - Isi ringkasan perubahan + cara cek singkat.
 
 ## 4) Verifikasi Setelah Publish
 
-1. Download asset `chrome-mv3-prod.zip` dari halaman release.
+1. Download asset `powermaxx-extension-vX.Y.Z.zip` dari halaman release.
 2. Extract ZIP.
-3. Install di Chrome via `Load unpacked` (folder hasil extract).
-4. Jalankan smoke test popup:
+3. Jika extension lama `Powermaxx Order Scraper` masih terpasang, nonaktifkan/hapus dulu.
+4. Install di Chrome via `Load unpacked` (folder hasil extract).
+5. Jalankan smoke test popup:
    - Login.
    - `Refresh Status` sampai `Bridge: ACTIVE`.
    - `Fetch + Send`.
