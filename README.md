@@ -1,6 +1,6 @@
 # Powermaxx
 
-Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), lalu mengirim data ke API Powermaxx.
+Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), lalu mengirim data update MP ke API Powermaxx.
 
 ## Referensi Resmi
 
@@ -73,7 +73,7 @@ Lihat detail operasional di `docs/release-checklist.md`.
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama`, dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` (`Update MP`, `Fetch + Send + AWB`, `Download AWB`), dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -93,8 +93,8 @@ Lihat detail operasional di `docs/release-checklist.md`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
-6. Di popup klik `Fetch + Send`.
-7. Uji `Fetch + Send + AWB` dan `Download AWB`.
+6. Di popup klik `Update MP` untuk menjalankan proses update data marketplace ke sistem Powermaxx.
+7. Uji juga `Fetch + Send + AWB` dan `Download AWB` jika diperlukan.
 8. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
 9. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
 10. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
