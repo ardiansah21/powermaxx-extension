@@ -13,7 +13,7 @@
 - [2026-02-22] Model host permission: specific marketplace + optional host runtime.
 - [2026-02-22] Strategi scraping: hybrid (content script utama, fallback `chrome.scripting.executeScript`).
 - [2026-02-22] Bulk bridge dijalankan headless di background (tanpa membuka tab bulk UI).
-- [2026-02-23] Hardening worker parity: report `run_order` memakai dedupe key per `run_id:run_order_id` + retry terbatas untuk error transient (status 0/408/429).
+- [2026-02-23] Hardening worker parity: report `run_order` memakai dedupe key per `run_id:run_order_id` + retry terbatas untuk error transient (kondisi network/server sementara).
 - [2026-02-23] Bulk headless diberi overlap guard per sumber trigger (`tab-{id}` / `global`) agar run ganda dari sumber yang sama tidak berjalan paralel.
 - [2026-02-23] Bridge coexistence guard aktif: saat extension legacy masih merespons event `powermaxx`, bridge Plasmo menahan eksekusi lokal agar mengurangi risiko proses ganda pada browser yang memasang extension lama + baru bersamaan.
 - [2026-02-23] Bridge injector menandai instance aktif per-tab (`data-powermaxx-bridge-instance`) agar listener lama setelah reload extension tidak ikut memproses request/response baru.
@@ -32,6 +32,6 @@
 - [2026-02-23] Worker dan bulk headless sekarang memiliki stall watchdog (`run_stalled` / `run_resumed`) dengan payload order aktif agar diagnosis run macet lebih cepat tanpa mengubah kontrak bridge legacy.
 - [2026-02-23] Worker API payload canonical diperluas dengan `tab_id` dan `extension_version` (plus alias camelCase) pada flow `claim-next`, `heartbeat`, `report`, dan `complete` untuk observability lintas legacy + Plasmo.
 - [2026-02-23] Coexistence guard bridge eksternal diperketat: request lokal hanya dibatalkan jika response eksternal bisa dikorelasikan lewat `run_id` atau `__pmx_request_id`, untuk mencegah false-positive "request tidak merespons".
-- [2026-02-23] Worker loop durability dikunci: empty `claim-next` tidak lagi menghentikan run, polling idle memakai backoff 2-5 detik, transient error (`429`/`5xx`/network) memakai retry exponential+jitter, dan run context aktif dipersist agar auto-resume setelah service worker restart.
+- [2026-02-23] Worker loop durability dikunci: empty `claim-next` tidak lagi menghentikan run, polling idle memakai backoff 2-5 detik, transient error (kondisi server/network sementara) memakai retry exponential+jitter, dan run context aktif dipersist agar auto-resume setelah service worker restart.
 - [2026-02-23] (Superseded) Kompatibilitas `single` tanpa `run_id` via fallback headless-bulk dinonaktifkan untuk menegakkan kontrak run-centric.
 - [2026-02-23] Mode `single` dikunci strict run-centric: `run_id`/`runId` wajib ada, dan request tanpa run ID harus hard-fail tanpa fallback ke bulk/non-queue flow.

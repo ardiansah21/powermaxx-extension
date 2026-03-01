@@ -123,7 +123,7 @@ Lihat detail operasional di `docs/release-checklist.md`.
 
 - Worker mode tidak berhenti hanya karena `claim-next` kosong selama run belum terminal.
 - Empty claim diperlakukan sebagai idle state dan dipoll ulang dengan backoff 2-5 detik (capped).
-- Error transient polling (`429`, `5xx`, timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
+- Error transient polling (server sementara tidak stabil atau timeout/network) tidak menghentikan run; extension retry dengan exponential backoff + jitter.
 - Context batch aktif disimpan di `chrome.storage.local` (`batch_id`, `worker_id`, `last_poll`, `last_error`, `stop_reason`) agar service worker bisa auto-resume saat startup/reload.
 
 ## Troubleshooting
