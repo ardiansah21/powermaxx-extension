@@ -1,5 +1,6 @@
 # Keputusan yang Sudah Dikunci
 
+- [2026-03-02] UX bridge popup dikunci ke mode hybrid: saat awal/inactive tampil tombol teks (`Cek Status Bridge`/`Perbaiki Bridge`), saat active tampil ikon refresh ringkas; status awal ditampilkan sebagai `Bridge: BELUM DICEK` agar tidak dianggap error.
 - [2026-03-01] Strategi distribusi tim dikunci via GitHub Release dengan satu artifact resmi `build/powermaxx-extension-vX.Y.Z.zip`; versioning disederhanakan ke `MAJOR.MINOR.PATCH` dengan tag `vX.Y.Z` untuk memudahkan rollback dan audit rilis.
 - [2026-02-26] Aksi logout popup dipindahkan dari group menu ke tombol lingkaran inisial user di header agar akses logout lebih cepat dan UI menu tetap ringkas.
 - [2026-02-26] Status bridge dipantau hanya dari extension popup (tanpa endpoint backend baru), tanpa polling periodik; status disimpan di storage dan check bridge hanya dijalankan saat user menekan `Refresh Status` / `Perbaiki Bridge` (atau saat Base URL berubah dan user refresh manual).

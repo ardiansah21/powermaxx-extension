@@ -26,7 +26,7 @@ type RuntimeResult = {
   }
 }
 
-type BridgeUiStatus = "checking" | "active" | "inactive"
+type BridgeUiStatus = "checking" | "active" | "inactive" | "unchecked"
 
 type BridgeHealthRuntimeResult = {
   ok: boolean
@@ -114,6 +114,20 @@ const bridgeActionButtonStyle: React.CSSProperties = {
   placeItems: "center",
   cursor: "pointer"
 }
+
+const bridgeTextButtonStyle = (disabled = false): React.CSSProperties => ({
+  border: "1px solid #94a3b8",
+  borderRadius: 8,
+  background: "#ffffff",
+  color: "#334155",
+  padding: "3px 8px",
+  minHeight: 24,
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1.2,
+  cursor: disabled ? "default" : "pointer",
+  opacity: disabled ? 0.6 : 1
+})
 
 const headerActionsStyle: React.CSSProperties = {
   display: "flex",
@@ -306,7 +320,7 @@ function PopupPage() {
   const [pendingOrderNo, setPendingOrderNo] = useState("")
   const [busyLogin, setBusyLogin] = useState(false)
   const [busyAction, setBusyAction] = useState(false)
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeUiStatus>("inactive")
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeUiStatus>("unchecked")
   const [bridgeHint, setBridgeHint] = useState("")
   const [bridgeBusy, setBridgeBusy] = useState(false)
 
@@ -350,21 +364,21 @@ function PopupPage() {
     const normalizedBaseUrl = normalizeBaseUrl(rawBaseUrl)
 
     if (!normalizedBaseUrl) {
-      setBridgeStatus("inactive")
+      setBridgeStatus("unchecked")
       setBridgeHint("Base URL belum diatur.")
       return
     }
 
     const cached = await loadBridgeStatusCache()
     if (!cached) {
-      setBridgeStatus("inactive")
-      setBridgeHint("Status bridge belum dicek. Klik Refresh Status.")
+      setBridgeStatus("unchecked")
+      setBridgeHint("Bridge belum dicek (normal saat awal). Klik Cek Status Bridge.")
       return
     }
 
     if (normalizeBaseUrl(cached.baseUrl) !== normalizedBaseUrl) {
-      setBridgeStatus("inactive")
-      setBridgeHint("Base URL berubah. Klik Refresh Status.")
+      setBridgeStatus("unchecked")
+      setBridgeHint("Base URL berubah. Klik Cek Status Bridge.")
       return
     }
 
@@ -838,123 +852,104 @@ function PopupPage() {
                 Bridge:{" "}
                 {bridgeStatus === "active"
                   ? "ACTIVE"
+                  : bridgeStatus === "unchecked"
+                    ? "BELUM DICEK"
                   : bridgeStatus === "inactive"
                     ? "INACTIVE"
                     : "CHECKING"}
               </span>
-              <button
-                type="button"
-                style={{
-                  ...bridgeActionButtonStyle,
-                  opacity: bridgeBusy ? 0.6 : 1,
-                  cursor: bridgeBusy ? "default" : "pointer"
-                }}
-                disabled={bridgeBusy}
-                onClick={() =>
-                  void syncBridgeStatus(bridgeStatus === "inactive")
-                }
-                aria-label={
-                  bridgeBusy
-                    ? "Checking bridge status"
+              {bridgeStatus === "active" ? (
+                <button
+                  type="button"
+                  style={{
+                    ...bridgeActionButtonStyle,
+                    opacity: bridgeBusy ? 0.6 : 1,
+                    cursor: bridgeBusy ? "default" : "pointer"
+                  }}
+                  disabled={bridgeBusy}
+                  onClick={() => void syncBridgeStatus(false)}
+                  aria-label={
+                    bridgeBusy ? "Mengecek status bridge" : "Cek ulang status bridge"
+                  }
+                  title={bridgeBusy ? "Mengecek status bridge" : "Cek ulang status bridge"}>
+                  {bridgeBusy ? (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true">
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeDasharray="4 3"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true">
+                      <path
+                        d="M21 12A9 9 0 0 0 5.5 5.7L3 8"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M3 3V8H8"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M3 12A9 9 0 0 0 18.5 18.3L21 16"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M16 21H21V16"
+                        stroke="currentColor"
+                        strokeWidth="1.9"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  style={bridgeTextButtonStyle(bridgeBusy)}
+                  disabled={bridgeBusy}
+                  onClick={() => void syncBridgeStatus(bridgeStatus === "inactive")}
+                  aria-label={
+                    bridgeBusy
+                      ? "Mengecek status bridge"
+                      : bridgeStatus === "inactive"
+                        ? "Perbaiki Bridge"
+                        : "Cek Status Bridge"
+                  }>
+                  {bridgeBusy
+                    ? "Mengecek..."
                     : bridgeStatus === "inactive"
                       ? "Perbaiki Bridge"
-                      : "Refresh Status"
-                }
-                title={
-                  bridgeBusy
-                    ? "Checking bridge status"
-                    : bridgeStatus === "inactive"
-                      ? "Perbaiki Bridge"
-                      : "Refresh Status"
-                }>
-                {bridgeBusy ? (
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true">
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="9"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeDasharray="4 3"
-                    />
-                  </svg>
-                ) : bridgeStatus === "inactive" ? (
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true">
-                    <path
-                      d="M17 17L22 12C23.4 10.6 23.4 8.4 22 7C20.6 5.6 18.4 5.6 17 7L13 11"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M7 7L2 12C0.6 13.4 0.6 15.6 2 17C3.4 18.4 5.6 18.4 7 17L11 13"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M3 3L21 21"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    aria-hidden="true">
-                    <path
-                      d="M21 12A9 9 0 0 0 5.5 5.7L3 8"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M3 3V8H8"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M3 12A9 9 0 0 0 18.5 18.3L21 16"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M16 21H21V16"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
+                      : "Cek Status Bridge"}
+                </button>
+              )}
             </div>
-            {bridgeStatus === "inactive" && bridgeHint && (
+            {bridgeStatus !== "active" && bridgeHint && (
               <p style={{ ...titleSubStyle, margin: "2px 0 0" }}>
                 {bridgeHint}
               </p>

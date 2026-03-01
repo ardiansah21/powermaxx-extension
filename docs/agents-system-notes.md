@@ -12,6 +12,8 @@
 - Logout popup sekarang dipindah ke tombol lingkaran inisial user di header (di samping tombol menu), sehingga tidak lagi berada di dalam group menu action.
 - Banner status popup/options hanya muncul saat ada aksi/error; status sesi awal tidak ditampilkan agar area kerja tetap ringkas.
 - Popup menampilkan indikator `Bridge: ACTIVE/INACTIVE/CHECKING` tepat di bawah `Base URL`, dengan cache status di `chrome.storage.local`; check bridge hanya saat user menekan `Refresh Status` atau `Perbaiki Bridge` (tanpa polling otomatis dan tanpa auto-check saat popup dibuka).
+- Saat popup pertama kali dibuka dan status bridge belum pernah dicek, UI menampilkan `Bridge: BELUM DICEK` dengan hint `Bridge belum dicek (normal saat awal). Klik Cek Status Bridge.` sebagai kondisi awal normal (bukan error runtime).
+- Kontrol bridge memakai mode hybrid: status `BELUM DICEK`/`INACTIVE` menampilkan tombol teks (`Cek Status Bridge` / `Perbaiki Bridge`), sedangkan status `ACTIVE` menampilkan ikon refresh untuk cek ulang cepat.
 - Popup sesi aktif sekarang memakai pola `Aksi Utama` saja (tanpa tombol update terpisah), dengan aksi `Fetch + Send + AWB`, `Fetch + Send`, dan `Download AWB`.
 - Group menu di header popup sekarang hanya berisi `Bulk Operator`, `Viewer`, dan `Pengaturan`; aksi `Logout` dipicu langsung dari tombol inisial user.
 - Aksi `Ambil Data` dan `Kirim Data` di popup dihapus; proses fetch payload untuk viewer dipindahkan ke auto-fetch pada halaman Viewer saat payload masih kosong.

@@ -86,21 +86,24 @@ Lihat detail operasional di `docs/release-checklist.md`.
 4. Buka Chrome ke `chrome://extensions`.
 5. Aktifkan `Developer mode` di pojok kanan atas.
 6. Jika extension lama `Powermaxx Order Scraper` masih terpasang, nonaktifkan atau hapus dulu agar tidak bentrok.
-7. Klik `Load unpacked`, lalu pilih folder hasil extract yang berisi `manifest.json`.
+7. Klik `Load unpacked` atau `Muat yang belum dibuka`, lalu pilih folder hasil extract yang berisi `manifest.json`.
 8. Klik ikon `Extensions` (ikon puzzle) di kanan atas Chrome.
 9. Cari `Powermaxx`, lalu klik ikon pin (`Sematkan`) supaya ikon Powermaxx selalu muncul di toolbar.
 10. Klik ikon `Powermaxx` di toolbar untuk membuka popup extension.
-11. Login menggunakan email dan password akun Powermaxx.
-12. Di popup, klik ikon menu tiga garis di kanan atas, lalu pilih `Pengaturan`.
-13. Isi `Base URL API` dengan `https://pmx.arvateams.com`, lalu klik `Simpan`.
-14. Kembali ke popup, klik `Refresh Status` pada baris status bridge.
-15. Jika status sudah `Bridge: ACTIVE`, extension siap dipakai. Uji cepat dengan klik `Fetch + Send`.
+11. Di popup, klik ikon menu tiga garis di kanan atas, lalu pilih `Pengaturan`.
+12. Isi `Base URL API` dengan `https://pmx.arvateams.com`, lalu klik `Simpan`.
+13. Setelah klik `Simpan`, jika muncul pop-up izin akses situs, klik `Izinkan`.
+14. Kembali ke popup, lalu login menggunakan email dan password akun Powermaxx.
+15. Klik tombol `Cek Status Bridge` untuk cek status bridge.
+16. Jika status berubah ke `Bridge: INACTIVE`, klik `Perbaiki Bridge`, lalu cek ulang.
+17. Pastikan status menjadi `Bridge: ACTIVE`.
+18. Jika status sudah `Bridge: ACTIVE`, extension siap dipakai. Uji cepat dengan klik `Fetch + Send`.
 
 ## Arsitektur Ringkas
 
 - `src/background.ts`: orchestrator runtime messaging, bulk/worker bridge, tab control.
 - `src/contents/marketplace.ts`: runner scraping/fetch/AWB marketplace + bridge listener.
-- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` (`Fetch + Send + AWB`, `Fetch + Send`, `Download AWB`), dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge minimalis (`ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL` dari cache.
+- `src/popup.tsx`: login (`email + password`) dan kontrol cepat berbasis `Aksi Utama` (`Fetch + Send + AWB`, `Fetch + Send`, `Download AWB`), dengan satu group menu header untuk `Viewer`, `Bulk Operator`, dan `Pengaturan`, serta tombol logout via ikon lingkaran inisial user di samping menu; indikator status bridge (`BELUM DICEK/ACTIVE/INACTIVE`) ditampilkan di bawah `Base URL`.
 - `src/options.tsx`: pengaturan Base URL API + endpoint marketplace + konfigurasi AWB dengan section collapsible.
 - `src/tabs/bulk.tsx`: UI operator bulk headless untuk submit daftar order + monitor progress event worker.
 - `src/tabs/viewer.tsx`: viewer payload fetch/send terakhir (ringkasan + raw JSON + copy/download).
@@ -123,17 +126,19 @@ Lihat detail operasional di `docs/release-checklist.md`.
 
 1. Jalankan `npm run build`.
 2. Jalankan `npm run dev`.
-3. Buka popup dan login dengan email + password akun Powermaxx.
-4. Buka halaman detail order di seller marketplace (Shopee/TikTok).
-5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
-6. Di popup jalankan proses manual dengan klik `Fetch + Send` atau `Fetch + Send + AWB`.
-7. Uji juga `Download AWB` jika diperlukan.
-8. Pada alur produksi, proses update dipicu dari sistem Powermaxx (Laravel) dan extension menerima request bridge secara otomatis.
-9. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
-10. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
-11. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
-12. Verifikasi response status dan event bridge untuk mode web integration.
-13. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
+3. Buka popup, lalu pastikan `Base URL API` sudah `https://pmx.arvateams.com` (dari menu `Pengaturan`).
+4. Login dengan email + password akun Powermaxx.
+5. Jika awalnya muncul `Bridge: BELUM DICEK` dan pesan `Bridge belum dicek`, klik `Cek Status Bridge`.
+6. Pastikan indikator bridge menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
+7. Buka halaman detail order di seller marketplace (Shopee/TikTok).
+8. Di popup jalankan proses manual dengan klik `Fetch + Send` atau `Fetch + Send + AWB`.
+9. Uji juga `Download AWB` jika diperlukan.
+10. Pada alur produksi, proses update dipicu dari sistem Powermaxx (Laravel) dan extension menerima request bridge secara otomatis.
+11. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
+12. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
+13. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
+14. Verifikasi response status dan event bridge untuk mode web integration.
+15. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
 
 - `worker.loop.start`
 - `worker.claim.empty`
@@ -165,7 +170,8 @@ Lihat detail operasional di `docs/release-checklist.md`.
 - Jika muncul `Sesi login belum tersedia`: login dulu dari Popup (email + password).
 - Jika `Tab marketplace tidak ditemukan`: fokus ke tab seller aktif.
 - Jika `Bridge belum aktif`: grant optional host permission dan register bridge origin.
-- Jika status popup `Bridge: INACTIVE`: klik `Perbaiki Bridge`, lalu pastikan tab Powermaxx terbuka dan klik ulang.
+- Jika awal popup menampilkan `Bridge: BELUM DICEK` + `Bridge belum dicek`: itu normal, klik tombol `Cek Status Bridge`.
+- Jika status popup tetap `Bridge: INACTIVE` setelah cek manual: klik `Perbaiki Bridge`, lalu pastikan tab Powermaxx terbuka dan cek ulang.
 - Jika export gagal fetch: cek base URL API, HTTPS, CORS, dan status login.
 - Jika AWB gagal: cek endpoint AWB di Options, pastikan tab yang aktif adalah halaman detail order marketplace.
 - Jika bulk mode auto gagal: cek `defaultMarketplace` di Options, lalu pastikan order memang tersedia di marketplace fallback.
