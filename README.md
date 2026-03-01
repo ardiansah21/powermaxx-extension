@@ -124,7 +124,7 @@ Lihat detail operasional di `docs/release-checklist.md`.
 1. Jalankan `npm run build`.
 2. Jalankan `npm run dev`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
-4. Buka tab seller Shopee/TikTok (sudah login seller).
+4. Buka halaman detail order di seller marketplace (Shopee/TikTok).
 5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
 6. Di popup jalankan proses manual dengan klik `Fetch + Send` atau `Fetch + Send + AWB`.
 7. Uji juga `Download AWB` jika diperlukan.
