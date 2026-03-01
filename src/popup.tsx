@@ -973,41 +973,23 @@ function PopupPage() {
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
                 aria-hidden="true">
-                <rect
-                  x="4"
-                  y="4"
-                  width="6"
-                  height="6"
-                  rx="1.2"
+                <path
+                  d="M4.5 7.5H19.5"
                   stroke="currentColor"
-                  strokeWidth="1.6"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
                 />
-                <rect
-                  x="14"
-                  y="4"
-                  width="6"
-                  height="6"
-                  rx="1.2"
+                <path
+                  d="M4.5 12H19.5"
                   stroke="currentColor"
-                  strokeWidth="1.6"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
                 />
-                <rect
-                  x="4"
-                  y="14"
-                  width="6"
-                  height="6"
-                  rx="1.2"
+                <path
+                  d="M4.5 16.5H19.5"
                   stroke="currentColor"
-                  strokeWidth="1.6"
-                />
-                <rect
-                  x="14"
-                  y="14"
-                  width="6"
-                  height="6"
-                  rx="1.2"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
                 />
               </svg>
             </button>
