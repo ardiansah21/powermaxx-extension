@@ -1,6 +1,6 @@
 # Powermaxx
 
-Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), lalu mengirim data update MP ke API Powermaxx.
+Powermaxx adalah Chrome Extension berbasis **Plasmo + Manifest V3** untuk workflow automation dan scraping marketplace (Shopee/TikTok), sebagai eksekutor proses update dari sistem Powermaxx (Laravel) melalui bridge.
 
 ## Referensi Resmi
 
@@ -81,6 +81,12 @@ Lihat detail operasional di `docs/release-checklist.md`.
 - `src/features/viewer/shared/storage.ts`: persistence payload viewer di `chrome.storage.local`.
 - `src/core/*`: kontrak tipe, logger, storage settings, helper messaging.
 
+## Definisi Update MP
+
+- Sumber perintah utama `Update MP` berasal dari sistem Powermaxx (Laravel) melalui bridge (`powermaxx` -> `powermaxx_extension`).
+- Extension menjalankan pengambilan data dari marketplace di browser, lalu mengirim hasilnya kembali ke API Powermaxx.
+- Tombol `Update MP` di popup adalah trigger manual untuk kebutuhan operator/testing, bukan pengganti alur bridge dari sistem.
+
 ## Permission Model
 
 - `host_permissions` statis: domain marketplace yang dipakai scraping.
@@ -93,13 +99,14 @@ Lihat detail operasional di `docs/release-checklist.md`.
 3. Buka popup dan login dengan email + password akun Powermaxx.
 4. Buka tab seller Shopee/TikTok (sudah login seller).
 5. Klik `Refresh Status` untuk check bridge manual, lalu pastikan indikator di popup menunjukkan `ACTIVE` (jika `INACTIVE`, klik `Perbaiki Bridge`).
-6. Di popup klik `Update MP` untuk menjalankan proses update data marketplace ke sistem Powermaxx.
-7. Uji juga `Fetch + Send + AWB` dan `Download AWB` jika diperlukan.
-8. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
-9. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
-10. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
-11. Verifikasi response status dan event bridge untuk mode web integration.
-12. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
+6. Di popup klik `Update MP` untuk trigger manual proses update (uji operator/testing).
+7. Pada alur produksi, proses update dipicu dari sistem Powermaxx (Laravel) dan extension menerima request bridge secara otomatis.
+8. Uji juga `Fetch + Send + AWB` dan `Download AWB` jika diperlukan.
+9. Klik icon `Viewer` di header popup, pastikan saat payload kosong viewer melakukan auto-fetch dari tab marketplace aktif.
+10. Klik icon `Bulk Operator` di header popup, kirim batch kecil, lalu pastikan progress event `batch.started` sampai `batch.finished` muncul.
+11. Di Viewer pastikan payload terakhir bisa dilihat/copy/download.
+12. Verifikasi response status dan event bridge untuk mode web integration.
+13. Untuk worker mode, verifikasi log observability berikut muncul saat run berjalan:
 
 - `worker.loop.start`
 - `worker.claim.empty`
