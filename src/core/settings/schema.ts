@@ -82,10 +82,15 @@ export interface TikTokSettings {
   awb: TikTokAwbSettings
 }
 
+export interface WorkerSettings {
+  persistentWorkerTabEnabled: boolean
+}
+
 export interface PowermaxxSettings {
   defaultMarketplace: Exclude<Marketplace, "auto">
   components: string
   auth: AuthSettings
+  worker: WorkerSettings
   marketplaces: {
     shopee: ShopeeSettings
     tiktok_shop: TikTokSettings
@@ -101,6 +106,9 @@ export const DEFAULT_SETTINGS: PowermaxxSettings = {
     email: "",
     deviceName: DEFAULT_DEVICE_NAME,
     profile: null
+  },
+  worker: {
+    persistentWorkerTabEnabled: false
   },
   marketplaces: {
     shopee: {

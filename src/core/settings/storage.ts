@@ -10,6 +10,30 @@ import {
 
 const getStorageArea = () => chrome.storage?.local
 
+const normalizeBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === "boolean") {
+    return value
+  }
+
+  if (typeof value === "number") {
+    return value !== 0
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase()
+
+    if (["1", "true", "yes", "on"].includes(normalized)) {
+      return true
+    }
+
+    if (["0", "false", "no", "off"].includes(normalized)) {
+      return false
+    }
+  }
+
+  return fallback
+}
+
 const mergeSettings = (raw: unknown): PowermaxxSettings => {
   const record = (raw || {}) as Record<string, any>
   const marketplaces = record.marketplaces || {}
@@ -37,6 +61,14 @@ const mergeSettings = (raw: unknown): PowermaxxSettings => {
         String(record?.auth?.deviceName || "").trim() ||
         DEFAULT_SETTINGS.auth.deviceName,
       profile: record?.auth?.profile || null
+    },
+    worker: {
+      ...DEFAULT_SETTINGS.worker,
+      ...(record.worker || {}),
+      persistentWorkerTabEnabled: normalizeBoolean(
+        record?.worker?.persistentWorkerTabEnabled,
+        DEFAULT_SETTINGS.worker.persistentWorkerTabEnabled
+      )
     },
     marketplaces: {
       shopee: {

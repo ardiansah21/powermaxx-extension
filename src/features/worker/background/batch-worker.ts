@@ -12,7 +12,10 @@ import {
   toActionMode
 } from "~src/core/messages/guards"
 import type { PowermaxxSettings } from "~src/core/settings/schema"
-import { executeFetchOnlyByOrder } from "~src/features/fetch-send/background/run-fetch-send"
+import {
+  cleanupWorkerMarketplaceTabs,
+  executeFetchOnlyByOrder
+} from "~src/features/fetch-send/background/run-fetch-send"
 import { sendBridgeWorkerEvent } from "~src/features/bridge/background/bridge-events"
 import {
   computeIdleBackoffMs,
@@ -649,7 +652,8 @@ const processJob = async (session: BatchWorkerSession, claim: BatchJobClaim) => 
           idType: orderIdType
         },
         actionMode,
-        settings: session.settings
+        settings: session.settings,
+        workerSessionKey: session.key
       })
       technicalError = null
     } catch (error) {
@@ -913,6 +917,14 @@ const runBatchWorkerLoop = async (session: BatchWorkerSession) => {
       error: session.lastError
     })
   } finally {
+    try {
+      await cleanupWorkerMarketplaceTabs(session.key)
+    } catch (error) {
+      logWorker("warn", "worker.marketplace_tab.cleanup_failed", session, {
+        error: errorMessage(error, "Gagal membersihkan tab worker marketplace.")
+      })
+    }
+
     try {
       await upsertPersistedSession(session)
     } catch (error) {

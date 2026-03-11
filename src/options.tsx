@@ -121,6 +121,25 @@ const inputStyle: React.CSSProperties = {
   background: "#ffffff"
 }
 
+const checkboxRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: SPACE.sm,
+  fontSize: 13,
+  color: "#0f172a",
+  lineHeight: 1.5
+}
+
+const checkboxStyle: React.CSSProperties = {
+  marginTop: 2
+}
+
+const checkboxHintStyle: React.CSSProperties = {
+  marginTop: 4,
+  color: "#64748b",
+  fontSize: 12
+}
+
 const actionBarStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
@@ -153,6 +172,7 @@ type FieldProps = {
 
 type SectionKey =
   | "auth"
+  | "worker"
   | "shopee"
   | "shopeeAwb"
   | "tiktok"
@@ -190,6 +210,7 @@ function OptionsPage() {
   const [saving, setSaving] = useState(false)
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     auth: true,
+    worker: true,
     shopee: true,
     shopeeAwb: false,
     tiktok: true,
@@ -337,6 +358,47 @@ function OptionsPage() {
                     </select>
                   </div>
                 </div>
+              </div>
+            )}
+          </section>
+
+          <section style={sectionStyle}>
+            <button
+              type="button"
+              style={sectionHeaderButtonStyle}
+              onClick={() => toggleSection("worker")}
+              aria-expanded={openSections.worker}>
+              <h2 style={sectionTitleStyle}>Worker</h2>
+              <span aria-hidden="true">{openSections.worker ? "▾" : "▸"}</span>
+            </button>
+            <p style={sectionTextStyle}>
+              Mode cepat untuk batch. Default OFF agar behavior tetap sama seperti sekarang.
+            </p>
+            {openSections.worker && (
+              <div style={sectionBodyStyle}>
+                <label htmlFor="opt-worker-persistent-tab" style={checkboxRowStyle}>
+                  <input
+                    id="opt-worker-persistent-tab"
+                    name="worker_persistent_tab"
+                    type="checkbox"
+                    style={checkboxStyle}
+                    checked={Boolean(settings.worker.persistentWorkerTabEnabled)}
+                    onChange={(event) =>
+                      update({
+                        worker: {
+                          ...settings.worker,
+                          persistentWorkerTabEnabled: event.target.checked
+                        }
+                      })
+                    }
+                  />
+                  <span>
+                    Gunakan tab worker persisten (lebih cepat).
+                    <span style={{ ...checkboxHintStyle, display: "block" }}>
+                      ON: 1 tab dipakai ulang per worker. OFF: buka/tutup tab baru tiap job.
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
           </section>

@@ -32,6 +32,7 @@ import { runMarketplaceFetchInPage } from "~src/features/fetch-send/content/page
 
 let lastMarketplaceTabId: number | null = null
 let lastMarketplaceTabUrl = ""
+const persistentWorkerTabIds = new Map<string, number>()
 
 const getMarketplaceContentScriptFiles = () => {
   const manifest = chrome.runtime.getManifest()
@@ -122,6 +123,70 @@ const waitForAllowedUrl = async (
   throw new Error(
     `URL bukan target marketplace. URL terakhir: ${lastUrl || fallbackUrl || "-"}`
   )
+}
+
+const buildPersistentWorkerTabKey = (
+  workerSessionKey: string,
+  marketplace: Exclude<Marketplace, "auto">
+) => `${workerSessionKey}:${marketplace}`
+
+const openOrReusePersistentWorkerTab = async (args: {
+  workerSessionKey: string
+  marketplace: Exclude<Marketplace, "auto">
+  orderUrl: string
+}): Promise<chrome.tabs.Tab> => {
+  const key = buildPersistentWorkerTabKey(args.workerSessionKey, args.marketplace)
+  const existingTabId = persistentWorkerTabIds.get(key)
+
+  if (existingTabId) {
+    try {
+      const updated = await chrome.tabs.update(existingTabId, {
+        url: args.orderUrl,
+        active: false
+      })
+
+      if (updated?.id) {
+        return updated
+      }
+    } catch (_error) {
+      persistentWorkerTabIds.delete(key)
+    }
+  }
+
+  const created = await chrome.tabs.create({
+    url: args.orderUrl,
+    active: false
+  })
+
+  if (!created.id) {
+    throw new Error("Gagal membuka tab order.")
+  }
+
+  persistentWorkerTabIds.set(key, created.id)
+
+  return created
+}
+
+export const cleanupWorkerMarketplaceTabs = async (workerSessionKey: string) => {
+  const normalizedSessionKey = String(workerSessionKey || "").trim()
+  if (!normalizedSessionKey) {
+    return
+  }
+
+  const prefix = `${normalizedSessionKey}:`
+  const entries = Array.from(persistentWorkerTabIds.entries()).filter(([key]) =>
+    key.startsWith(prefix)
+  )
+
+  for (const [key, tabId] of entries) {
+    persistentWorkerTabIds.delete(key)
+
+    try {
+      await chrome.tabs.remove(tabId)
+    } catch (_error) {
+      // ignore
+    }
+  }
 }
 
 const rememberMarketplaceTab = async (tabId?: number | null) => {
@@ -402,6 +467,7 @@ export interface ExecuteFetchSendOrderInput {
   actionMode: ActionMode
   settings: PowermaxxSettings
   timeoutMs?: number
+  workerSessionKey?: string | null
 }
 
 const normalizeOrderForExecution = async (
@@ -429,6 +495,7 @@ export const executeFetchOnlyByOrder = async (
   input: ExecuteFetchSendOrderInput
 ): Promise<ExecuteFetchSendResult> => {
   const timeoutMs = input.timeoutMs || 120000
+  const workerSessionKey = String(input.workerSessionKey || "").trim()
 
   const normalizedOrder = await normalizeOrderForExecution(input)
   const marketplace = normalizedOrder.marketplace
@@ -452,11 +519,20 @@ export const executeFetchOnlyByOrder = async (
   }
 
   const orderUrl = buildOrderUrl(marketplace, normalizedOrder.id)
+  const usePersistentWorkerTab =
+    input.settings.worker.persistentWorkerTabEnabled === true &&
+    workerSessionKey.length > 0
 
   let tab: chrome.tabs.Tab | null = null
 
   try {
-    tab = await chrome.tabs.create({ url: orderUrl, active: false })
+    tab = usePersistentWorkerTab
+      ? await openOrReusePersistentWorkerTab({
+          workerSessionKey,
+          marketplace,
+          orderUrl
+        })
+      : await chrome.tabs.create({ url: orderUrl, active: false })
 
     if (!tab.id) {
       throw new Error("Gagal membuka tab order.")
@@ -500,7 +576,7 @@ export const executeFetchOnlyByOrder = async (
       actionMode: input.actionMode
     }
   } finally {
-    if (tab?.id) {
+    if (tab?.id && !usePersistentWorkerTab) {
       try {
         await chrome.tabs.remove(tab.id)
       } catch (_error) {
