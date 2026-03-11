@@ -88,6 +88,47 @@ const isAllowedUrl = (
   return url.includes("seller-id.tokopedia.com")
 }
 
+const isTargetOrderUrl = (
+  currentUrl: string,
+  targetUrl: string,
+  marketplace: Exclude<Marketplace, "auto">
+) => {
+  if (!currentUrl || !targetUrl) {
+    return false
+  }
+
+  try {
+    const current = new URL(currentUrl)
+    const target = new URL(targetUrl)
+
+    if (current.origin !== target.origin) {
+      return false
+    }
+
+    if (marketplace === "tiktok_shop") {
+      const currentOrderNo = current.searchParams.get("order_no") || ""
+      const targetOrderNo = target.searchParams.get("order_no") || ""
+
+      return (
+        current.pathname === target.pathname &&
+        currentOrderNo.length > 0 &&
+        currentOrderNo === targetOrderNo
+      )
+    }
+
+    const currentId = current.pathname.split("/").filter(Boolean).at(-1) || ""
+    const targetId = target.pathname.split("/").filter(Boolean).at(-1) || ""
+
+    return (
+      current.pathname === target.pathname &&
+      currentId.length > 0 &&
+      currentId === targetId
+    )
+  } catch (_error) {
+    return currentUrl === targetUrl
+  }
+}
+
 const waitForAllowedUrl = async (
   tabId: number,
   marketplace: Exclude<Marketplace, "auto">,
@@ -104,7 +145,11 @@ const waitForAllowedUrl = async (
 
     if (url) lastUrl = url
 
-    if (isAllowedUrl(url, marketplace)) {
+    if (
+      isAllowedUrl(url, marketplace) &&
+      isTargetOrderUrl(url, fallbackUrl, marketplace) &&
+      tabInfo?.status === "complete"
+    ) {
       return url
     }
 
